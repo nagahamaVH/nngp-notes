@@ -65,26 +65,40 @@ for (i in 1:nrow(nn_data$nn_idx)) {
   print(gp_pred(coords[i + 1,], y[nn], sigma[nn, nn], coords[nn,]))
 }
 
+# GP likelihood
+gp_ll = function(p, x, y) {
+  sigma_sq = exp(p[1])
+  phi = exp(p[2])
+  tau_sq = exp(p[3])
+  d <- dist(x) %>%
+    as.matrix()
+  sigma <- sigma_sq * exp(-phi * d) + tau_sq * diag(nrow(x))
+  mu <- rep(0, nrow(x))
+  ll <- dmvnorm(y, mu, sigma, log = TRUE)
+  return(-ll)
+}
 
-# GP_ll2 = function(p) {
-#   sig_sq = exp(p[1])
-#   rho_sq = exp(p[2])
-#   tau_sq = exp(p[3])
-#   Mu = rep(0, length(x))
-#   Sigma = sig_sq * exp( - rho_sq * outer(x, x, '-')^2 ) + tau_sq * diag(length(x))
-#   ll = dmvnorm(y, Mu, Sigma, log = TRUE)
-#   return(-ll)
-# }
-# 
-# GP_ll2 = function(p) {
-#   sig_sq = exp(p[1])
-#   rho_sq = exp(p[2])
-#   tau_sq = exp(p[3])
-#   Mu = rep(0, length(x))
-#   Sigma = sig_sq * exp( - rho_sq * outer(x, x, '-')^2 ) + tau_sq * diag(length(x))
-#   # ll = dmvnorm(y, Mu, Sigma, log = TRUE)
-#   # replace ll by
-#   # p(y_1) * p(y_2 | y_1) * p(y_3 | y_2, y_1) * p(y_n | y_{n-1}, ..., y_1)
-#   return(-ll)
-# }
+# NNGP likelihood
+nngp_ll = function(p, x, y, m) {
+  sigma_sq = exp(p[1])
+  phi = exp(p[2])
+  tau_sq = exp(p[3])
+  d <- dist(x) %>%
+    as.matrix()
+  sigma <- sigma_sq * exp(-phi * d) + tau_sq * diag(nrow(x))
+  nn_data <- get_nn(coords, m)
+  cond_dens <- NULL
+  cond_dens[1] <- dnorm(y[1], 0, sqrt(sigma[1, 1]))
+  for (i in 1:nrow(nn_data$nn_idx)) {
+    nn <- nn_data$ord[nn_data$nn_idx[i,]]
+    parms <- gp_pred(coords[i + 1,], y[nn], sigma[nn, nn], coords[nn,])
+    cond_dens[i + 1] <- dnorm(y[i + 1], parms[1], sqrt(parms[2]))
+  }
+  ll <- prod(cond_dens) %>%
+    log()
+  return(-ll)
+}
 
+parms <- log(c(2, 3, 0.9))
+gp_ll(parms, coords, y)
+nngp_ll(parms, coords, y, m)
