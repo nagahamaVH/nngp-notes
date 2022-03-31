@@ -26,23 +26,12 @@ get_nn <- function(coords, m){
   return(list(ord = ord, nn_idx = nn_idx))
 }
 
-# Return the parameters of conditional distribution p(y_star | y) from a MVN
-cond_mvn <- function(y_new, y, p, coords){
-  if (!is.matrix(y_new)) {
-    y_new <- matrix(y_new, nrow = 1)
-  }
-  d <- dist(coords) %>%
-    as.matrix()
-  d_star <- rbind(y_new, coords) %>%
-    dist() %>%
-    as.matrix()
-  d_star <- d_star[-1, 1]
-  sigma <- p[1]
-  phi <- p[2]
-  tau <- p[3]
-  Sigma <- sigma^2 * exp(-phi^2 * d) + tau^2 * diag(length(y))
-  sigma_star <- sigma^2 * exp(-phi^2 * d_star)
-  sigma_star_star <- sigma^2 + tau^2
+# Return the conditional mean and variance from a MVN, i.e the parameters of
+# p(idx | given_idx)
+cond_mvn <- function(idx, given_idx, y, sigma){
+  Sigma <- sigma[given_idx, given_idx]
+  sigma_star <- sigma[idx, given_idx]
+  sigma_star_star <- sigma[idx, idx]
   ynew_mean <- sigma_star %*% solve(Sigma, y)
   ynew_sigma <- sigma_star_star - sigma_star %*% solve(Sigma, sigma_star)
   y_param <- c(ynew_mean, ynew_sigma)
@@ -73,13 +62,15 @@ nngp_ll = function(p, coords, y, m) {
     as.numeric()
   tau <- p[3] %>%
     as.numeric()
+  d <- dist(coords) %>%
+    as.matrix()
+  Sigma <- sigma^2 * exp(-phi^2 * d) + tau^2 * diag(length(y))
   nn_data <- get_nn(coords, m)
-  cond_dens <- dnorm(y[1], 0, sqrt(sigma^2 + tau^2), log = T)
+  cond_dens <- dnorm(y[1], 0, sqrt(Sigma[1, 1]), log = T)
   # Get the conditional distributions for NNGP
   for (i in 1:nrow(nn_data$nn_idx)) {
     nn <- nn_data$ord[nn_data$nn_idx[i,]]
-    parms <- cond_mvn(
-      coords[i + 1,], y[nn], c(sigma, phi, tau), matrix(coords[nn,], nrow = length(nn)))
+    parms <- cond_mvn(idx = i + 1, given_idx = nn, y = y[nn], Sigma)
     cond_dens[i + 1] <- dnorm(y[i + 1], parms[1], sqrt(parms[2]), log = T)
   }
   ll <- sum(cond_dens)
