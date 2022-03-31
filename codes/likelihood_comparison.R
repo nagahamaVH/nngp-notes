@@ -16,7 +16,7 @@ library(mvtnorm)
 source("./nngp-notes/codes/gp_nngp_ll.R")
 
 n <- 5
-m <- 3
+m <- 4
 
 set.seed(126)
 coords <- cbind(runif(n), runif(n))
@@ -40,8 +40,8 @@ y <- w + eps
 # -----------------------
 # Univariate plot
 # -----------------------
-parms_grid <- seq(0.2, phi + 3, length.out = 100) %>%
-  tibble(sigma, phi = ., tau)
+parms_grid <- seq(0.2, sigma + 3, length.out = 100) %>%
+  tibble(sigma = ., phi, tau)
 
 gp <- apply(parms_grid, MARGIN = 1, FUN = gp_ll, coords, y)
 nngp <- apply(parms_grid, MARGIN = 1, FUN = nngp_ll, coords, y, m)
@@ -49,8 +49,8 @@ nngp <- apply(parms_grid, MARGIN = 1, FUN = nngp_ll, coords, y, m)
 parms_grid <- parms_grid %>%
   bind_cols("gp" = gp, "nngp" = nngp)
 
-ggplot(parms_grid, aes(x = phi, y = gp, colour = "GP")) +
-  geom_vline(xintercept = phi, linetype = 2) +
+ggplot(parms_grid, aes(x = sigma, y = gp, colour = "GP")) +
+  geom_vline(xintercept = sigma, linetype = 2) +
   geom_line() +
   geom_line(aes(y = nngp, colour = "NNGP")) +
   geom_point(data = parms_grid[which.min(parms_grid$gp),]) +

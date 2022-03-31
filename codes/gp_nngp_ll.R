@@ -74,15 +74,14 @@ nngp_ll = function(p, coords, y, m) {
   tau <- p[3] %>%
     as.numeric()
   nn_data <- get_nn(coords, m)
-  cond_dens <- dnorm(y[1], 0, sqrt(sigma^2 + tau^2))
+  cond_dens <- dnorm(y[1], 0, sqrt(sigma^2 + tau^2), log = T)
   # Get the conditional distributions for NNGP
   for (i in 1:nrow(nn_data$nn_idx)) {
     nn <- nn_data$ord[nn_data$nn_idx[i,]]
     parms <- cond_mvn(
       coords[i + 1,], y[nn], c(sigma, phi, tau), matrix(coords[nn,], nrow = length(nn)))
-    cond_dens[i + 1] <- dnorm(y[i + 1], parms[1], sqrt(parms[2]))
+    cond_dens[i + 1] <- dnorm(y[i + 1], parms[1], sqrt(parms[2]), log = T)
   }
-  ll <- prod(cond_dens) %>%
-    log()
+  ll <- sum(cond_dens)
   return(-ll)
 }
