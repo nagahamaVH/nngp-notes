@@ -104,3 +104,30 @@ p2 <- ggplot(parms_grid2, aes(x = phi, y = sigma, colour = nngp)) +
   theme_light()
 
 plot_grid(p1, p2)
+
+# -----------------------
+# Predicted surface
+# -----------------------
+df <- tibble(
+  c1 = coords[,1],
+  c2 = coords[,2],
+  y = y
+)
+
+gp_pred <- df %>%
+  select(c1, c2) %>%
+  apply(MARGIN = 1, cond_mvn, y = y, p = c(sigma, phi, tau), coords = coords) %>%
+  t()
+
+df <- df %>%
+  bind_cols(gp = gp_pred[,1])
+
+p3 <- ggplot(df, aes(x = c1, y = c2, z = y)) +
+  geom_density_2d_filled() +
+  theme_light()
+
+p4 <- ggplot(df, aes(x = c1, y = c2, z = gp)) +
+  geom_density_2d_filled() +
+  theme_light()
+
+plot_grid(p3, p4)

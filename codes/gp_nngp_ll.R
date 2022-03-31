@@ -28,6 +28,9 @@ get_nn <- function(coords, m){
 
 # Return the parameters of conditional distribution p(y_star | y) from a MVN
 cond_mvn <- function(y_new, y, p, coords){
+  if (!is.matrix(y_new)) {
+    y_new <- matrix(y_new, nrow = 1)
+  }
   d <- dist(coords) %>%
     as.matrix()
   d_star <- rbind(y_new, coords) %>%
