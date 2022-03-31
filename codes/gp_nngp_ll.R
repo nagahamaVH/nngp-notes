@@ -42,7 +42,7 @@ cond_mvn <- function(y_new, y, p, coords){
   tau <- p[3]
   Sigma <- sigma^2 * exp(-phi^2 * d) + tau^2 * diag(length(y))
   sigma_star <- sigma^2 * exp(-phi^2 * d_star)
-  sigma_star_star <- sigma^2
+  sigma_star_star <- sigma^2 + tau^2
   ynew_mean <- sigma_star %*% solve(Sigma, y)
   ynew_sigma <- sigma_star_star - sigma_star %*% solve(Sigma, sigma_star)
   y_param <- c(ynew_mean, ynew_sigma)
