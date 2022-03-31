@@ -15,8 +15,8 @@ library(cowplot)
 library(mvtnorm)
 source("./nngp-notes/codes/gp_nngp_ll.R")
 
-n <- 5
-m <- 4
+n <- 50
+m <- 3
 
 set.seed(126)
 coords <- cbind(runif(n), runif(n))
@@ -40,7 +40,7 @@ y <- w + eps
 # -----------------------
 # Univariate plot
 # -----------------------
-parms_grid <- seq(0.2, sigma + 3, length.out = 100) %>%
+parms_grid <- seq(sigma - .5, sigma + .5, length.out = 100) %>%
   tibble(sigma = ., phi, tau)
 
 gp <- apply(parms_grid, MARGIN = 1, FUN = gp_ll, coords, y)
@@ -57,15 +57,17 @@ ggplot(parms_grid, aes(x = sigma, y = gp, colour = "GP")) +
   geom_point(
     data = parms_grid[which.min(parms_grid$nngp),],
     aes(y = nngp, colour = "NNGP")) +
-  labs(x = expression(Phi), y = "log-likelihood", colour = "") +
+  labs(
+    x = expression(sigma), y = "log-likelihood", colour = "",
+    title = paste0("n = ", n, ", m = ", m)) +
   theme_light()
 
 # -----------------------
 # Bivariate plot
 # -----------------------
 parms_grid2 <- tibble(
-  sigma = seq(2, sigma + 1, length.out = 10), 
-  phi = seq(2, phi + 1, length.out = 10), 
+  sigma = seq(sigma - 1, sigma + 2, length.out = 10), 
+  phi = seq(phi - 1, phi + 2, length.out = 10), 
   tau) %>%
   expand.grid()
 
@@ -103,7 +105,12 @@ p2 <- ggplot(parms_grid2, aes(x = phi, y = sigma, colour = nngp)) +
   scale_colour_viridis_b(direction = -1) +
   theme_light()
 
-plot_grid(p1, p2)
+legend <- get_legend(p1)
+
+plot_grid(
+  p1 + theme(legend.position = "none"), 
+  p2 + theme(legend.position = "none"),
+  legend, ncol = 3, rel_widths = c(1, 1, .4))
 
 # -----------------------
 # Predicted surface
