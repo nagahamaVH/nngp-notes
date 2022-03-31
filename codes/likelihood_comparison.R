@@ -11,8 +11,9 @@
 
 library(dplyr)
 library(ggplot2)
+library(cowplot)
 library(mvtnorm)
-source("./nngp-notes/codes/nn_matrix.R")
+source("./nngp-notes/codes/gp_nngp_ll.R")
 
 n <- 5
 m <- 3
@@ -24,92 +25,82 @@ coords <- cbind(runif(n), runif(n))
 ord <- order(coords[,1])
 coords <- coords[ord,]
 
+# Parameters
 sigma <- 3
 phi <- 4
 tau <- 0.6
 
 d <- dist(coords) %>%
   as.matrix()
-
 w <- rmvnorm(1, sigma = sigma^2 * exp(-phi^2 * d)) %>%
   c()
 eps <- rnorm(n, 0, tau)
 y <- w + eps
 
-# Conditional distribution p(y_star | y) from a MVN
-gp_pred <- function(y_new, y, p, coords){
-  d <- dist(coords) %>%
-    as.matrix()
-  d_star <- rbind(y_new, coords) %>%
-    dist() %>%
-    as.matrix()
-  d_star <- d_star[-1, 1]
-  sigma <- p[1]
-  phi <- p[2]
-  tau <- p[3]
-  Sigma <- sigma^2 * exp(-phi^2 * d) + tau^2 * diag(length(y))
-  sigma_star <- sigma^2 * exp(-phi^2 * d_star)
-  sigma_star_star <- sigma^2
-  ynew_mean <- sigma_star %*% solve(Sigma, y)
-  ynew_sigma <- sigma_star_star - sigma_star %*% solve(Sigma, sigma_star)
-  y_param <- c(ynew_mean, ynew_sigma)
-  return(y_param)
-}
+# -----------------------
+# Univariate plot
+# -----------------------
+parms_grid <- seq(0.2, phi + 3, length.out = 100) %>%
+  tibble(sigma, phi = ., tau)
 
-# GP likelihood
-gp_ll = function(p, x, y) {
-  sigma <- p[1] %>%
-    as.numeric()
-  phi <- p[2] %>%
-    as.numeric()
-  tau <- p[3] %>%
-    as.numeric()
-  d <- dist(x) %>%
-    as.matrix()
-  Sigma <- sigma^2 * exp(-phi^2 * d) + tau^2 * diag(nrow(x))
-  mu <- rep(0, nrow(x))
-  ll <- dmvnorm(y, mu, Sigma, log = TRUE)
-  return(-ll)
-}
-
-# NNGP likelihood
-nngp_ll = function(p, x, y, m) {
-  sigma <- p[1] %>%
-    as.numeric()
-  phi <- p[2] %>%
-    as.numeric()
-  tau <- p[3] %>%
-    as.numeric()
-  nn_data <- get_nn(x, m)
-  cond_dens <- dnorm(y[1], 0, sqrt(sigma^2 + tau^2))
-  # Get the conditional distributions for NNGP
-  for (i in 1:nrow(nn_data$nn_idx)) {
-    nn <- nn_data$ord[nn_data$nn_idx[i,]]
-    parms <- gp_pred(
-      x[i + 1,], y[nn], c(sigma, phi, tau), matrix(x[nn,], nrow = length(nn)))
-    cond_dens[i + 1] <- dnorm(y[i + 1], parms[1], sqrt(parms[2]))
-  }
-  ll <- prod(cond_dens) %>%
-    log()
-  return(-ll)
-}
-
-parms_grid <- seq(0.2, sigma + 2, length.out = 20) %>%
-  tibble(sigma = ., phi, tau)
-
-gp_uni <- apply(parms_grid, MARGIN = 1, FUN = gp_ll, coords, y)
-nngp_uni <- apply(parms_grid, MARGIN = 1, FUN = nngp_ll, coords, y, m)
+gp <- apply(parms_grid, MARGIN = 1, FUN = gp_ll, coords, y)
+nngp <- apply(parms_grid, MARGIN = 1, FUN = nngp_ll, coords, y, m)
 
 parms_grid <- parms_grid %>%
-  bind_cols("gp" = gp_uni, "nngp" = nngp_uni)
+  bind_cols("gp" = gp, "nngp" = nngp)
 
-ggplot(parms_grid, aes(x = sigma, y = gp, colour = "GP")) +
+ggplot(parms_grid, aes(x = phi, y = gp, colour = "GP")) +
+  geom_vline(xintercept = phi, linetype = 2) +
   geom_line() +
   geom_line(aes(y = nngp, colour = "NNGP")) +
   geom_point(data = parms_grid[which.min(parms_grid$gp),]) +
   geom_point(
     data = parms_grid[which.min(parms_grid$nngp),],
     aes(y = nngp, colour = "NNGP")) +
-  labs(x = expression(sigma), y = "log-likelihood", colour = "") +
+  labs(x = expression(Phi), y = "log-likelihood", colour = "") +
   theme_light()
 
+# -----------------------
+# Bivariate plot
+# -----------------------
+parms_grid2 <- tibble(
+  sigma = seq(2, sigma + 1, length.out = 10), 
+  phi = seq(2, phi + 1, length.out = 10), 
+  tau) %>%
+  expand.grid()
+
+gp <- apply(parms_grid2, MARGIN = 1, FUN = gp_ll, coords, y)
+nngp <- apply(parms_grid2, MARGIN = 1, FUN = nngp_ll, coords, y, m)
+
+parms_grid2 <- parms_grid2 %>%
+  bind_cols("gp" = gp, "nngp" = nngp)
+
+p1 <- ggplot(parms_grid2, aes(x = phi, y = sigma, colour = gp)) +
+  geom_point(size = 8) +
+  geom_point(
+    aes(x = phi, y = sigma), data = tibble(phi, sigma), 
+    color = "black", size = 8, shape = 18) +
+  geom_point(
+    aes(x = phi, y = sigma), data = parms_grid2[which.min(parms_grid2$gp),], 
+    color = "black", size = 10, shape = 1) +
+  labs(
+    x = expression(Phi), y = expression(sigma), colour = "log-likelihood",
+    title = "GP") +
+  scale_colour_viridis_b(direction = -1) +
+  theme_light()
+
+p2 <- ggplot(parms_grid2, aes(x = phi, y = sigma, colour = nngp)) +
+  geom_point(size = 8) +
+  geom_point(
+    aes(x = phi, y = sigma), data = tibble(phi, sigma), 
+    color = "black", size = 8, shape = 18) +
+  geom_point(
+    aes(x = phi, y = sigma), data = parms_grid2[which.min(parms_grid2$nngp),], 
+    color = "black", size = 10, shape = 1) +
+  labs(
+    x = expression(Phi), y = expression(sigma), colour = "log-likelihood",
+    title = "NNGP") +
+  scale_colour_viridis_b(direction = -1) +
+  theme_light()
+
+plot_grid(p1, p2)
