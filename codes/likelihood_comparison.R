@@ -58,7 +58,7 @@ ggplot(parms_grid, aes(x = sigma, y = gp, colour = "GP")) +
     data = parms_grid[which.min(parms_grid$nngp),],
     aes(y = nngp, colour = "NNGP")) +
   labs(
-    x = expression(sigma), y = "log-likelihood", colour = "",
+    x = expression(sigma), y = "neg log-likelihood", colour = "",
     title = paste0("n = ", n, ", m = ", m)) +
   theme_light()
 
@@ -86,7 +86,7 @@ p1 <- ggplot(parms_grid2, aes(x = phi, y = sigma, colour = gp)) +
     aes(x = phi, y = sigma), data = parms_grid2[which.min(parms_grid2$gp),], 
     color = "black", size = 10, shape = 1) +
   labs(
-    x = expression(Phi), y = expression(sigma), colour = "log-likelihood",
+    x = expression(Phi), y = expression(sigma), colour = "neg log-likelihood",
     title = "GP") +
   scale_colour_viridis_b(direction = -1) +
   theme_light()
@@ -100,7 +100,7 @@ p2 <- ggplot(parms_grid2, aes(x = phi, y = sigma, colour = nngp)) +
     aes(x = phi, y = sigma), data = parms_grid2[which.min(parms_grid2$nngp),], 
     color = "black", size = 10, shape = 1) +
   labs(
-    x = expression(Phi), y = expression(sigma), colour = "log-likelihood",
+    x = expression(Phi), y = expression(sigma), colour = "neg log-likelihood",
     title = "NNGP") +
   scale_colour_viridis_b(direction = -1) +
   theme_light()
@@ -111,30 +111,3 @@ plot_grid(
   p1 + theme(legend.position = "none"), 
   p2 + theme(legend.position = "none"),
   legend, ncol = 3, rel_widths = c(1, 1, .4))
-
-# -----------------------
-# Predicted surface
-# -----------------------
-df <- tibble(
-  c1 = coords[,1],
-  c2 = coords[,2],
-  y = y
-)
-
-gp_pred <- df %>%
-  select(c1, c2) %>%
-  apply(MARGIN = 1, cond_mvn, y = y, p = c(sigma, phi, tau), coords = coords) %>%
-  t()
-
-df <- df %>%
-  bind_cols(gp = gp_pred[,1])
-
-p3 <- ggplot(df, aes(x = c1, y = c2, z = y)) +
-  geom_density_2d_filled() +
-  theme_light()
-
-p4 <- ggplot(df, aes(x = c1, y = c2, z = gp)) +
-  geom_density_2d_filled() +
-  theme_light()
-
-plot_grid(p3, p4)
