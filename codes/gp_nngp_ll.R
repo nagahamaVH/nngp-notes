@@ -76,3 +76,23 @@ nngp_ll = function(p, coords, y, m) {
   ll <- sum(cond_dens)
   return(-ll)
 }
+
+pred_cond_mvn <- function(x_star, x, y, p) {
+  d <- dist(x) %>%
+    as.matrix()
+  d_star <- rbind(x_star, x) %>%
+    dist() %>%
+    as.matrix()
+  d_star <- d_star[-1, 1]
+
+  sigma <- p[1]
+  phi <- p[2]
+  tau <- p[3]
+  Sigma <- sigma^2 * exp(-phi^2 * d) + tau^2 * diag(length(y))
+  sigma_star <- sigma^2 * exp(-phi^2 * d_star)
+  sigma_star_star <- sigma^2
+  ynew_mean <- sigma_star %*% solve(Sigma, y)
+  ynew_sigma <- sigma_star_star - sigma_star %*% solve(Sigma, sigma_star)
+  y_param <- c(ynew_mean, ynew_sigma)
+  return(y_param)
+}
