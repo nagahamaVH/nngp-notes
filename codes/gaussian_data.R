@@ -1,4 +1,4 @@
-# Comparison of GP and NNGP likelihood
+# Comparison of GP and NNGP likelihood for Normal response 
 #
 # The basic idea is that the NNGP likelihood should be a cheaper approximation
 # of the GP likelihood.
