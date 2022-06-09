@@ -1,3 +1,5 @@
+# Gaussian Markov Random Fields Theory and Applications - Havard Rue, Leonhard Held
+# 4.4.1 - The GMRF approximation
 library(dplyr)
 library(ggplot2)
 library(cowplot)
@@ -31,8 +33,8 @@ gaussian_proxy <- function(b0, y, sigma_inv) {
   return(parms)
 }
 
-# Fisher scoring (Iteratively reweighted least squares) to match the mode of
-# posterior distribution with the Gaussian approximation
+# Iterative algorithm to match the mode of posterior distribution with the 
+# Gaussian approximation
 estim_gaussian_proxy <- function(b0, y, sigma_inv, control = list(it = 100, tol = 1e-4)) {
   for (i in 1:control$it) {
     proxy <- gaussian_proxy(b0, y, sigma_inv)
@@ -46,22 +48,34 @@ estim_gaussian_proxy <- function(b0, y, sigma_inv, control = list(it = 100, tol 
   return(parms)
 }
 
+# Laplace approximation
+# f(theta | y) \approx f(y | b_hat, theta) * f(b_hat | theta) / N(b_hat, sigma)
+laplace <- function(y, b, theta, sd_b) {
+  posterior(b, y, theta, log = T) - dnorm(b, b, sd_b, log = T)
+}
+
+confint2 <- function(mu, sigma) {
+  ub <- mu + 1.96 * sqrt(diag(sigma))
+  lb <- mu - 1.96 * sqrt(diag(sigma))
+  
+  tibble(ub, lb, mu)
+}
+
 # Simulating data
 # y | b ~ Poisson(mu) where b = log mu
 # b ~ N(0, 1/0.001)
-n <- 1
 theta <- c(0, 1/0.001)
 y <- 3
 
 fit_gaussian <- estim_gaussian_proxy(0, y, solve(theta[2]))
-mu_proxy <- fit_gaussian$mu
-sd_proxy <- sqrt(fit_gaussian$sigma_sq) %>%
+b_hat <- fit_gaussian$mu
+sd_b <- sqrt(fit_gaussian$sigma_sq) %>%
   as.vector()
 
 # Step size
 h <- 0.01
 
-b_grid <- seq(mu_proxy - 5 * sd_proxy, mu_proxy + 5 * sd_proxy, by = h)
+b_grid <- seq(b_hat - 5 * sd_b, b_hat + 5 * sd_b, by = h)
 unnorm_exact <- posterior(b_grid, y = y, theta = theta)
 
 b0_grid <- c(0, 0.5, 1, 1.5)
@@ -87,3 +101,26 @@ for (i in 1:length(b0_grid)) {
 }
 
 plot_grid(plotlist = plots, nrow = 2)
+
+# Comparing implemented gaussian approximation of posterior with optim algorithm
+proxy_optim <- optim(
+  0, posterior, y = y, theta = theta, log = T, hessian = T, method = "BFGS", 
+  control = list(fnscale = -1))
+
+# Confident interval for estimated spatial effect
+ci <- confint2(fit_gaussian$mu, fit_gaussian$sigma) %>%
+  mutate(
+    id = 1,
+    type = "implemented"
+  )
+ci_optim <- confint2(proxy_optim$par, -solve(proxy_optim$hessian)) %>%
+  mutate(
+    id = 1,
+    type = "optim"
+  )
+ci_all <- bind_rows(ci, ci_optim)
+
+ggplot(data = ci_all, aes(x = type, y = mu)) +
+  geom_point() +
+  geom_linerange(aes(ymin = lb, ymax = ub)) +
+  labs(y = "Spatial effect", x = "Estimation method")
