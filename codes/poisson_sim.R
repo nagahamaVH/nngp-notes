@@ -21,35 +21,36 @@ m <- 3
 
 set.seed(126)
 coords <- cbind(runif(n), runif(n))
+# coords <- cbind(rep(1:10, each = 10), rep(1:10, 10))
 
 # To do: make generic to data without ordering
 ord <- order(coords[,1])
 coords <- coords[ord,]
 
 # Parameters
-sigma_true <- 1.7
-phi_true <- 3.2
-
+sigma_true <- 1
+phi_true <- 2.3
+mu_w <- 0
 # Generate data
 d <- dist(coords) %>%
   as.matrix()
-w <- rmvnorm(1, sigma = sigma_true^2 * exp(-phi_true^2 * d)) %>%
+w <- rmvnorm(1, mean = rep(mu_w, n), sigma = sigma_true^2 * exp(-phi_true^2 * d)) %>%
   c()
 # C <- sigma^2 * exp(-phi^2 * d)
 # w <- c(t(chol(C)) %*% rnorm(n))
 y <- rpois(n, exp(w))
 
+hist(y)
+
 table(y == 0) %>%
   prop.table()
-
 # -----------------------
 # Comparing estimate of spatial effect
 # -----------------------
-
 # GP
 n_it <- 100
 p_init <- c(log(1), log(1))
-w_init <- log(y + sqrt(.Machine$double.xmin))
+w_init <- log(y + 1e-4)
 for (i in 1:n_it) {
   print(i)
   sigma <- exp(p_init[1])
@@ -57,13 +58,15 @@ for (i in 1:n_it) {
   sigma_w <- sigma^2 * exp(-phi^2 * d)
   
   # Gaussian proxy
-  gauss <- estim_gaussian_proxy(w_init, y, sigma_w)
+  gauss <- estim_gaussian_proxy(w_init, y, mu_w = rep(mu_w, n), sigma_w)
   w_hat <- gauss$mu
+  sigma_hat <- gauss$sigma
   
   # Laplace
   fitted_parms <- optim(
-    p_init, laplace, y = y, coords = coords, w_hat = w_hat,
-    method = "BFGS", hessian = T, control = list(fnscale = -1))
+    p_init, laplace, y = y, coords = coords, w_hat = w_hat, 
+    sigma_hat = sigma_hat, mu_w = rep(mu_w, n), method = "BFGS", hessian = T, 
+    control = list(fnscale = -1))
   if (fitted_parms$convergence != 0) stop("Convergence error Laplace")
   
   if (max(abs(p_init - fitted_parms$par)) < 1e-4) break
@@ -73,10 +76,8 @@ for (i in 1:n_it) {
   print(exp(fitted_parms$par))
 }
 
-fitted_parms
-
 sigma_hat <- deltamethod(
-  list(~log(x1), ~log(x2)), fitted_parms$par, -solve(fitted_parms$hessian), ses = F)
+  list(~exp(x1), ~exp(x2)), fitted_parms$par, -solve(fitted_parms$hessian), ses = F)
 
 ci_parms <- confint2(exp(fitted_parms$par), sigma_hat) %>%
   mutate(
@@ -89,4 +90,5 @@ ggplot(data = ci_parms, aes(x = "")) +
   geom_linerange(aes(ymin = lb, ymax = ub)) +
   geom_point(aes(y = mu)) +
   geom_hline(aes(yintercept = true), lty = 2, col = "red") +
-  labs(y = "Estimate")
+  labs(y = "Estimate", x = "")
+
