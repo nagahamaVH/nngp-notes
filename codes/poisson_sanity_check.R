@@ -166,15 +166,7 @@ for (i in 1:n_sample) {
       exact = unnorm_exact / sum(unnorm_exact * h^2),
       proxy = unnorm_proxy / sum(unnorm_proxy * h^2)
     )
-  
-  # p <- ggplot(df, aes(x = b, y = exact)) +
-  #   geom_line() +
-  #   geom_line(aes(y = proxy), linetype = 2) +
-  #   geom_point(aes_string(x = b0_grid[i], y = 0)) +
-  #   labs(y = "Density") +
-  #   xlim(c(-2, 3)) +
-  #   theme_light()
-  
+
   p <- ggplot(df_plot, aes_string(x = paste0("w", id))) +
     geom_line(aes(y = exact)) +
     geom_line(aes(y = proxy), linetype = 2, col = "red") +
@@ -205,17 +197,18 @@ d <- dist(coords) %>%
   as.matrix()
 w <- rmvnorm(1, sigma = sigma_true^2 * exp(-phi_true^2 * d)) %>%
   c()
-y <- rpois(n, exp(w))
+y <- rpois(n, 2 + exp(w))
 
 hist(y)
 table(y == 0) %>%
   prop.table()
 
 parms_grid <- tibble(
-  log_sigma = seq(log(0.6), log(1.5), length.out = 10),
-  log_phi = seq(log(1.7), log(4), length.out = 10)
+  log_sigma = seq(.5, 3, length.out = 10),
+  log_phi = seq(.1, 5, length.out = 10)
 ) %>%
-  expand.grid()
+  expand.grid() %>%
+  mutate_all(log)
 
 w_init <- rep(0, n)
 sigma_w <- sigma_true^2 * exp(-phi_true^2 * d)
@@ -223,7 +216,7 @@ fit_proxy <- estim_gaussian_proxy(w_init, y, sigma_w)
 
 ll <- apply(
   parms_grid, 1, laplace, y = y, coords = coords, w_hat = fit_proxy$mu, 
-  sigma_hat = fit_proxy$sigma, mu_w = rep(0, n))
+  sigma_hat = fit_proxy$sigma, a = 2, mu_w = rep(0, n))
 
 parms_grid <- parms_grid %>%
   mutate(ll)

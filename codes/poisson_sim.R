@@ -17,7 +17,6 @@ source("./nngp-notes/codes/stat_utils.R")
 source("./nngp-notes/codes/poisson_functs.R")
 
 n <- 120
-m <- 3
 
 set.seed(126)
 coords <- cbind(runif(n), runif(n))
@@ -38,43 +37,47 @@ w <- rmvnorm(1, mean = rep(mu_w, n), sigma = sigma_true^2 * exp(-phi_true^2 * d)
   c()
 # C <- sigma^2 * exp(-phi^2 * d)
 # w <- c(t(chol(C)) %*% rnorm(n))
-y <- rpois(n, exp(w))
+y <- rpois(n, 2 + exp(w))
 
 hist(y)
 
 table(y == 0) %>%
   prop.table()
-# -----------------------
-# Comparing estimate of spatial effect
-# -----------------------
+
 # GP
-n_it <- 100
-p_init <- c(log(1), log(1))
-w_init <- log(y + 1e-4)
-for (i in 1:n_it) {
-  print(i)
-  sigma <- exp(p_init[1])
-  phi <- exp(p_init[2])
-  sigma_w <- sigma^2 * exp(-phi^2 * d)
-  
-  # Gaussian proxy
-  gauss <- estim_gaussian_proxy(w_init, y, mu_w = rep(mu_w, n), sigma_w)
-  w_hat <- gauss$mu
-  sigma_hat <- gauss$sigma
-  
-  # Laplace
-  fitted_parms <- optim(
-    p_init, laplace, y = y, coords = coords, w_hat = w_hat, 
-    sigma_hat = sigma_hat, mu_w = rep(mu_w, n), method = "BFGS", hessian = T, 
-    control = list(fnscale = -1))
-  if (fitted_parms$convergence != 0) stop("Convergence error Laplace")
-  
-  if (max(abs(p_init - fitted_parms$par)) < 1e-4) break
-  if (i == n_it) stop("Max iteraction number reached")
-  p_init <- fitted_parms$par
-  w_init <- w_hat
-  print(exp(fitted_parms$par))
+jesus <- function() {
+  n_it <- 100
+  p_init <- c(log(1), log(1))
+  w_init <- log(y + .5)
+  for (i in 1:n_it) {
+    print(i)
+    sigma <- exp(p_init[1])
+    phi <- exp(p_init[2])
+    sigma_w <- sigma^2 * exp(-phi^2 * d)
+    
+    # Gaussian proxy
+    gauss <- estim_gaussian_proxy(w_init, y, sigma_w)
+    w_hat <- gauss$mu
+    sigma_hat <- gauss$sigma
+    
+    # Laplace
+    fitted_parms <- optim(
+      p_init, laplace, y = y, coords = coords, w_hat = w_hat, 
+      sigma_hat = sigma_hat, a = 2, mu_w = rep(mu_w, n), method = "BFGS", hessian = T, 
+      control = list(fnscale = -1))
+    if (fitted_parms$convergence != 0) stop("Convergence error Laplace")
+    
+    if (max(abs(p_init - fitted_parms$par)) < 1e-4) break
+    if (i == n_it) stop("Max iteraction number reached")
+    p_init <- fitted_parms$par
+    w_init <- w_hat
+    print(exp(fitted_parms$par))
+  }
+  return(fitted_parms)
 }
+
+# debugonce(jesus)
+fitted_parms <- jesus()
 
 sigma_hat <- deltamethod(
   list(~exp(x1), ~exp(x2)), fitted_parms$par, -solve(fitted_parms$hessian), ses = F)
