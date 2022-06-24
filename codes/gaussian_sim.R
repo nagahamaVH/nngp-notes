@@ -58,8 +58,8 @@ coords <- coords[ord,]
 
 # Parameters
 sigma <- 3
-phi <- 4
-tau <- 0.6
+phi <- 2
+tau <- 0.1
 
 # Generate data
 d <- dist(coords) %>%
