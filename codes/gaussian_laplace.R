@@ -44,7 +44,7 @@ gp_ll = function(p, coords, y) {
     exp()
   d <- dist(coords) %>%
     as.matrix()
-  Sigma <- sigma^2 * exp(-phi^2 * d) + tau^2 * diag(nrow(coords))
+  Sigma <- sigma^2 * exp(-phi^2 * d) + diag(tau^2, nrow(coords))
   mu <- rep(0, nrow(coords))
   ll <- dmvnorm(y, mu, Sigma, log = TRUE)
   return(ll)
@@ -158,6 +158,24 @@ plot(w, fit_proxy$mu); abline(a = 0, b = 1)
 # Ploting the likelihood function with respect of parameters
 # given the true parameters and mode estimation of latent field 
 # -------------------------------------------------
+
+# -------------------------------------------------
+# Gaussian approximation of posterior:
+# Comparing parameters of posterior of latent field and its Gaussian proxy
+# -------------------------------------------------
+w_init <- rep(0, n)
+fit_proxy <- estim_gaussian_proxy(w_init, y, tau_true, sigma_w)
+
+# Exact pi(w | y, theta)
+sigma_y <- diag(tau_true^2, n)
+prec_post <- solve(sigma_w) + solve(sigma_y)
+sigma_post <- solve(prec_post)
+mu_post <- (sigma_post %*% solve(sigma_y) %*% y) %>%
+  c()
+
+plot(fit_proxy$mu, mu_post); abline(0, 1)
+all(fit_proxy$sigma == sigma_post)
+
 # -----------------------------------------------------------
 # Sigma
 # -----------------------------------------------------------
