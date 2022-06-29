@@ -9,7 +9,8 @@ source("./nngp-notes/codes/stat_utils.R")
 n <- 100
 
 set.seed(126)
-coords <- cbind(runif(n), runif(n))
+# coords <- cbind(runif(n), runif(n))
+coords <- cbind(rep(1:10, 10), rep(1:10, each = 10))
 
 # To do: make generic to data without ordering
 ord <- order(coords[,1])
@@ -17,8 +18,8 @@ coords <- coords[ord,]
 
 # Parameters
 sigma_true <- 3
-phi_true <- 2
-tau_true <- .1
+phi_true <- .5
+tau_true <- 1
 
 # Generate data
 d <- dist(coords) %>%
@@ -73,10 +74,11 @@ estim_gaussian_proxy <- function(
       print(hessian(tau))
       stop("hessian error")
     }
+    print(det(sigma_w))
     hess_m <- diag(hessian(tau), length(w0))
-    sigma <- solve(solve(sigma_w) - hess_m)
+    sigma <- chol2inv(chol((chol2inv(chol(sigma_w)) - hess_m)))
     mu <- as.vector(sigma %*% (gradient(w0, y, tau) - hess_m %*% w0))
-    
+
     if (max(abs(w0 - mu)) < control$tol) break
     if (i == control$it) stop("Max iteraction number reached")
     w0 <- mu
@@ -96,7 +98,13 @@ laplace <- function(y, coords, p_init, w_hat, sigma_hat, mu_w = rep(0, length(y)
   d <- dist(coords) %>%
     as.matrix()
   sigma_w <- sigma^2 * exp(-phi^2 * d)
-
+  # browser()
+  
+  # fix
+  sigma_y <- diag(tau^2, length(y))
+  prec_post <- chol2inv(chol(sigma_w)) + chol2inv(chol(sigma_y))
+  sigma_hat <- chol2inv(chol(prec_post))
+  
   denom <- -(length(y) / 2) * log(2 * pi) - 0.5 * log(det(sigma_hat) + sqrt(.Machine$double.xmin))
   ll <- posterior(y, w_hat, tau, sigma_w, mu_w, log = T) - denom
 
@@ -154,28 +162,31 @@ plot_grid(plotlist = plots, nrow = 2)
 plot(w, fit_proxy$mu); abline(a = 0, b = 1)
 
 # -------------------------------------------------
-# Checking Laplace approximation
-# Ploting the likelihood function with respect of parameters
-# given the true parameters and mode estimation of latent field 
-# -------------------------------------------------
-
-# -------------------------------------------------
 # Gaussian approximation of posterior:
 # Comparing parameters of posterior of latent field and its Gaussian proxy
 # -------------------------------------------------
+sigma <- 8
+phi <- 2
+tau <- .5
 w_init <- rep(0, n)
-fit_proxy <- estim_gaussian_proxy(w_init, y, tau_true, sigma_w)
+sigma_w <- sigma^2 * exp(-phi^2 * d)
+fit_proxy <- estim_gaussian_proxy(w_init, y, tau, sigma_w)
 
 # Exact pi(w | y, theta)
-sigma_y <- diag(tau_true^2, n)
+sigma_y <- diag(tau^2, n)
 prec_post <- solve(sigma_w) + solve(sigma_y)
 sigma_post <- solve(prec_post)
 mu_post <- (sigma_post %*% solve(sigma_y) %*% y) %>%
   c()
 
 plot(fit_proxy$mu, mu_post); abline(0, 1)
-all(fit_proxy$sigma == sigma_post)
 
+id <- lower.tri(fit_proxy$sigma, diag = T)
+lm(fit_proxy$sigma[id] ~ sigma_post[id])
+
+# -------------------------------------------------
+# Laplace approximation
+# -------------------------------------------------
 # -----------------------------------------------------------
 # Sigma
 # -----------------------------------------------------------
@@ -188,6 +199,7 @@ parms_grid <- tibble(
 
 # Assuming true parameters
 w_init <- rep(0, n)
+sigma_w <- sigma_true^2 * exp(-phi_true^2 * d)
 fit_proxy <- estim_gaussian_proxy(w_init, y, tau_true, sigma_w)
 
 ll <- apply(parms_grid, 1, gp_ll, coords = coords, y = y)
@@ -222,7 +234,7 @@ ggplot(parms_grid, aes(x = log_sigma)) +
 # -----------------------------------------------------------
 parms_grid <- tibble(
   sigma = sigma_true,
-  log_phi = seq(.5, 4, by = 0.01),
+  log_phi = seq(.2, 3, by = 0.01),
   tau = tau_true
 ) %>%
   mutate_all(log)
@@ -264,7 +276,7 @@ ggplot(parms_grid, aes(x = log_phi)) +
 parms_grid <- tibble(
   sigma = sigma_true,
   phi = phi_true,
-  log_tau = seq(.005, 1, by = 0.01)
+  log_tau = seq(.5, 3, by = 0.01)
 ) %>%
   mutate_all(log)
 
@@ -299,7 +311,10 @@ ggplot(parms_grid, aes(x = log_tau)) +
   geom_line(aes(y = ll)) +
   geom_line(aes(y = la), linetype = 2, color = "red")
 
-# Check if works
+# -----------------------------------------------------------
+# Checking Laplace approximation estimation
+# -----------------------------------------------------------
+# Likelihood
 gp <- optim(
   log(c(1, 1, 1)), gp_ll, coords = coords, y = y, method = "BFGS",
   control = list(fnscale = -1), hessian = T)
@@ -313,9 +328,10 @@ confint2(exp(gp$par), sigma_hat) %>%
     true = c(sigma_true, phi_true, tau_true)
   )
 
+# Laplace approximation
 fit <- function() {
-  n_it <- 100
-  p_init <- c(log(1), log(1), log(1))
+  n_it <- 1000
+  p_init <- c(log(sigma_true), log(phi_true), log(tau_true))
   w_init <- rep(0, n)
   mu_w <- 0
   for (i in 1:n_it) {
@@ -335,6 +351,7 @@ fit <- function() {
       p_init, laplace, y = y, coords = coords, w_hat = w_hat,
       sigma_hat = sigma_hat, mu_w = rep(mu_w, n), method = "BFGS", hessian = T,
       control = list(fnscale = -1))
+    print(paste0("parms: ", exp(fitted_parms$par)))
     if (fitted_parms$convergence != 0) stop("Convergence error Laplace")
     
     e <- abs(p_init - fitted_parms$par)
@@ -342,17 +359,15 @@ fit <- function() {
     if (i == n_it) stop("Max iteraction number reached")
     p_init <- fitted_parms$par
     w_init <- w_hat
-    print(paste0("parms: ", exp(fitted_parms$par)))
   }
   return(fitted_parms)
 }
 
 fitted_model <- fit()
 
-exp(fitted_model$par)
-
 sigma_hat <- deltamethod(
-  list(~exp(x1), ~exp(x2), ~exp(x3)), fitted_model$par, -solve(fitted_model$hessian), ses = F)
+  list(~exp(x1), ~exp(x2), ~exp(x3)), fitted_model$par, 
+  solve(-fitted_model$hessian), ses = F)
 
 ci_parms <- confint2(exp(fitted_model$par), sigma_hat) %>%
   mutate(
