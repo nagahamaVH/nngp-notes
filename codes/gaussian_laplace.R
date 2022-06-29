@@ -136,7 +136,7 @@ for (i in 1:n_sample) {
   
   df_plot <- rep(w, each = length(w_grid)) %>%
     matrix(ncol = n) %>%
-    as_tibble()
+    as_tibble(.name_repair = make.names)
   df_plot[,id] <- w_grid
   names(df_plot) <- paste0("w", 1:n)
   
@@ -296,12 +296,13 @@ confint2(exp(gp$par), sigma_hat) %>%
   )
 
 # Laplace approximation
-p_init <- c(log(sigma_true), log(phi_true), log(tau_true))
+p_init <- rep(1, 3) %>% 
+  log()
 w_init <- rep(0, n)
 mu_w <- 0
 fitted_parms <- optim(
   p_init, laplace, y = y, coords = coords, w_init = w_init, mu_w = rep(mu_w, n), 
-  method = "BFGS", hessian = T, control = list(fnscale = -1))
+  method = "Nelder-Mead", hessian = T, control = list(fnscale = -1))
 
 sigma_hat <- deltamethod(
   list(~exp(x1), ~exp(x2), ~exp(x3)), fitted_parms$par, 
