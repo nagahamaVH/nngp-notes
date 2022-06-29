@@ -10,13 +10,12 @@
 # where N(y_k) is the neighbor set of y_k.
 
 library(dplyr)
-library(purrr)
 library(ggplot2)
 library(mvtnorm)
 source("./nngp-notes/codes/stat_utils.R")
 source("./nngp-notes/codes/poisson_functs.R")
 
-n <- 120
+n <- 100
 
 set.seed(126)
 coords <- cbind(runif(n), runif(n))
@@ -29,55 +28,32 @@ coords <- coords[ord,]
 # Parameters
 sigma_true <- 1
 phi_true <- 2.3
-mu_w <- 0
+
 # Generate data
 d <- dist(coords) %>%
   as.matrix()
-w <- rmvnorm(1, mean = rep(mu_w, n), sigma = sigma_true^2 * exp(-phi_true^2 * d)) %>%
+sigma_w <- sigma_true^2 * exp(-phi_true^2 * d)
+w <- rmvnorm(1, mean = rep(0, n), sigma = sigma_w) %>%
   c()
 # C <- sigma^2 * exp(-phi^2 * d)
 # w <- c(t(chol(C)) %*% rnorm(n))
-y <- rpois(n, 2 + exp(w))
+y <- rpois(n, exp(w))
 
 hist(y)
 
 table(y == 0) %>%
   prop.table()
 
-# GP
-jesus <- function() {
-  n_it <- 100
-  p_init <- c(log(1), log(1))
-  w_init <- log(y + .5)
-  for (i in 1:n_it) {
-    print(i)
-    sigma <- exp(p_init[1])
-    phi <- exp(p_init[2])
-    sigma_w <- sigma^2 * exp(-phi^2 * d)
-    
-    # Gaussian proxy
-    gauss <- estim_gaussian_proxy(w_init, y, sigma_w)
-    w_hat <- gauss$mu
-    sigma_hat <- gauss$sigma
-    
-    # Laplace
-    fitted_parms <- optim(
-      p_init, laplace, y = y, coords = coords, w_hat = w_hat, 
-      sigma_hat = sigma_hat, a = 2, mu_w = rep(mu_w, n), method = "BFGS", hessian = T, 
-      control = list(fnscale = -1))
-    if (fitted_parms$convergence != 0) stop("Convergence error Laplace")
-    
-    if (max(abs(p_init - fitted_parms$par)) < 1e-4) break
-    if (i == n_it) stop("Max iteraction number reached")
-    p_init <- fitted_parms$par
-    w_init <- w_hat
-    print(exp(fitted_parms$par))
-  }
-  return(fitted_parms)
-}
+# Decay
+plot(d[,1], sigma_w[,1])
 
-# debugonce(jesus)
-fitted_parms <- jesus()
+# Laplace approximation
+p_init <- c(log(5), log(5))
+w_init <- log(y + .5)
+mu_w <- 0
+fitted_parms <- optim(
+  p_init, laplace, y = y, coords = coords, w_init = w_init, mu_w = rep(mu_w, n), 
+  method = "Nelder-Mead", hessian = T, control = list(fnscale = -1))
 
 sigma_hat <- deltamethod(
   list(~exp(x1), ~exp(x2)), fitted_parms$par, -solve(fitted_parms$hessian), ses = F)
@@ -94,4 +70,3 @@ ggplot(data = ci_parms, aes(x = "")) +
   geom_point(aes(y = mu)) +
   geom_hline(aes(yintercept = true), lty = 2, col = "red") +
   labs(y = "Estimate", x = "")
-
