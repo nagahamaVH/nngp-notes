@@ -74,7 +74,7 @@ estim_gaussian_proxy <- function(
       print(hessian(tau))
       stop("hessian error")
     }
-    print(det(sigma_w))
+
     hess_m <- diag(hessian(tau), length(w0))
     sigma <- chol2inv(chol((chol2inv(chol(sigma_w)) - hess_m)))
     mu <- as.vector(sigma %*% (gradient(w0, y, tau) - hess_m %*% w0))
@@ -91,27 +91,26 @@ estim_gaussian_proxy <- function(
 
 # Laplace approximation
 # f(theta | y) \approx f(y | w_hat, theta) * f(w_hat | theta) / MVN(w_hat, sigma)
-laplace <- function(y, coords, p_init, w_hat, sigma_hat, mu_w = rep(0, length(y))) {
+laplace <- function(y, coords, p_init, w_init, mu_w = rep(0, length(y))) {
   sigma <- exp(p_init[1])
   phi <- exp(p_init[2])
   tau <- exp(p_init[3])
   d <- dist(coords) %>%
     as.matrix()
   sigma_w <- sigma^2 * exp(-phi^2 * d)
-  # browser()
   
-  # fix
-  sigma_y <- diag(tau^2, length(y))
-  prec_post <- chol2inv(chol(sigma_w)) + chol2inv(chol(sigma_y))
-  sigma_hat <- chol2inv(chol(prec_post))
+  # Gaussian proxy
+  gauss <- estim_gaussian_proxy(w_init, y, tau, sigma_w)
+  w_hat <- gauss$mu
+  sigma_hat <- gauss$sigma
   
   denom <- -(length(y) / 2) * log(2 * pi) - 0.5 * log(det(sigma_hat) + sqrt(.Machine$double.xmin))
   ll <- posterior(y, w_hat, tau, sigma_w, mu_w, log = T) - denom
-
+  
   if (ll == -Inf) {
     ll <- -sqrt(.Machine$double.xmax)
   }
-
+  
   return(ll)
 }
 
@@ -199,23 +198,13 @@ parms_grid <- tibble(
 
 # Assuming true parameters
 w_init <- rep(0, n)
-sigma_w <- sigma_true^2 * exp(-phi_true^2 * d)
-fit_proxy <- estim_gaussian_proxy(w_init, y, tau_true, sigma_w)
 
 ll <- apply(parms_grid, 1, gp_ll, coords = coords, y = y)
-
 la <- apply(
-  parms_grid, 1, laplace, y = y, coords = coords, w_hat = fit_proxy$mu, 
-  sigma_hat = fit_proxy$sigma, mu_w = rep(0, n))
+  parms_grid, 1, laplace, y = y, coords = coords, w_init = w_init, mu_w = rep(0, n))
 
 parms_grid <- parms_grid %>%
   mutate(la, ll)
-
-parms_grid %>%
-  pivot_longer(cols = c(ll, la), names_to = "type", values_to = "ll") %>%
-  ggplot(., aes(x = log_sigma, y = ll)) +
-  geom_line() +
-  facet_wrap(vars(type), scales = "free")
 
 parms_grid %>%
   filter(ll == max(ll)) %>%
@@ -239,24 +228,12 @@ parms_grid <- tibble(
 ) %>%
   mutate_all(log)
 
-# Assuming true parameters
-w_init <- rep(0, n)
-fit_proxy <- estim_gaussian_proxy(w_init, y, tau_true, sigma_w)
-
 ll <- apply(parms_grid, 1, gp_ll, coords = coords, y = y)
-
 la <- apply(
-  parms_grid, 1, laplace, y = y, coords = coords, w_hat = fit_proxy$mu, 
-  sigma_hat = fit_proxy$sigma, mu_w = rep(0, n))
+  parms_grid, 1, laplace, y = y, coords = coords, w_init = w_init, mu_w = rep(0, n))
 
 parms_grid <- parms_grid %>%
   mutate(la, ll)
-
-parms_grid %>%
-  pivot_longer(cols = c(ll, la), names_to = "type", values_to = "ll") %>%
-  ggplot(., aes(x = log_phi, y = ll)) +
-  geom_line() +
-  facet_wrap(vars(type), scales = "free")
 
 parms_grid %>%
   filter(ll == max(ll)) %>%
@@ -280,24 +257,14 @@ parms_grid <- tibble(
 ) %>%
   mutate_all(log)
 
-# Assuming true parameters
 w_init <- rep(0, n)
-fit_proxy <- estim_gaussian_proxy(w_init, y, tau_true, sigma_w)
 
 ll <- apply(parms_grid, 1, gp_ll, coords = coords, y = y)
-
 la <- apply(
-  parms_grid, 1, laplace, y = y, coords = coords, w_hat = fit_proxy$mu,
-  sigma_hat = fit_proxy$sigma, mu_w = rep(0, n))
+  parms_grid, 1, laplace, y = y, coords = coords, w_init = w_init, mu_w = rep(0, n))
 
 parms_grid <- parms_grid %>%
   mutate(la, ll)
-
-parms_grid %>%
-  pivot_longer(cols = c(ll, la), names_to = "type", values_to = "ll") %>%
-  ggplot(., aes(x = log_tau, y = ll)) +
-  geom_line() +
-  facet_wrap(vars(type), scales = "free")
 
 parms_grid %>%
   filter(ll == max(ll)) %>%
@@ -329,47 +296,18 @@ confint2(exp(gp$par), sigma_hat) %>%
   )
 
 # Laplace approximation
-fit <- function() {
-  n_it <- 1000
-  p_init <- c(log(sigma_true), log(phi_true), log(tau_true))
-  w_init <- rep(0, n)
-  mu_w <- 0
-  for (i in 1:n_it) {
-    print(paste0("it: ", i))
-    sigma <- exp(p_init[1])
-    phi <- exp(p_init[2])
-    tau <- exp(p_init[3])
-    sigma_w <- sigma^2 * exp(-phi^2 * d)
-    
-    # Gaussian proxy
-    gauss <- estim_gaussian_proxy(w_init, y, tau, sigma_w)
-    w_hat <- gauss$mu
-    sigma_hat <- gauss$sigma
-
-    # Laplace
-    fitted_parms <- optim(
-      p_init, laplace, y = y, coords = coords, w_hat = w_hat,
-      sigma_hat = sigma_hat, mu_w = rep(mu_w, n), method = "BFGS", hessian = T,
-      control = list(fnscale = -1))
-    print(paste0("parms: ", exp(fitted_parms$par)))
-    if (fitted_parms$convergence != 0) stop("Convergence error Laplace")
-    
-    e <- abs(p_init - fitted_parms$par)
-    if (max(e) < 1e-4) break
-    if (i == n_it) stop("Max iteraction number reached")
-    p_init <- fitted_parms$par
-    w_init <- w_hat
-  }
-  return(fitted_parms)
-}
-
-fitted_model <- fit()
+p_init <- c(log(sigma_true), log(phi_true), log(tau_true))
+w_init <- rep(0, n)
+mu_w <- 0
+fitted_parms <- optim(
+  p_init, laplace, y = y, coords = coords, w_init = w_init, mu_w = rep(mu_w, n), 
+  method = "BFGS", hessian = T, control = list(fnscale = -1))
 
 sigma_hat <- deltamethod(
-  list(~exp(x1), ~exp(x2), ~exp(x3)), fitted_model$par, 
-  solve(-fitted_model$hessian), ses = F)
+  list(~exp(x1), ~exp(x2), ~exp(x3)), fitted_parms$par, 
+  solve(-fitted_parms$hessian), ses = F)
 
-ci_parms <- confint2(exp(fitted_model$par), sigma_hat) %>%
+ci_parms <- confint2(exp(fitted_parms$par), sigma_hat) %>%
   mutate(
     par = c("sigma", "phi", "tau"),
     true = c(sigma_true, phi_true, tau_true)
