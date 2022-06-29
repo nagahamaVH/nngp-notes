@@ -1,8 +1,8 @@
 library(dplyr)
-library(purrr)
 library(tidyr)
 library(ggplot2)
 library(cowplot)
+library(plotly)
 library(mvtnorm)
 source("./nngp-notes/codes/poisson_functs.R")
 
@@ -26,7 +26,8 @@ phi_true <- 2.3
 # Generate data
 d <- dist(coords) %>%
   as.matrix()
-w <- rmvnorm(1, sigma = sigma_true^2 * exp(-phi_true^2 * d)) %>%
+sigma_w <- sigma_true^2 * exp(-phi_true^2 * d)
+w <- rmvnorm(1, sigma = sigma_w) %>%
   c()
 y <- rpois(n, exp(w))
 
@@ -35,9 +36,10 @@ hist(y)
 table(y == 0) %>%
   prop.table()
 
-sigma_w <- sigma_true^2 * exp(-phi_true^2 * d)
-w_init <- rep(0, n)
+# Decay
+plot(d[,1], sigma_w[,1])
 
+w_init <- log(y + .5)
 gauss <- estim_gaussian_proxy(w_init, y, sigma_w)
 
 gauss_df <- tibble(
@@ -81,7 +83,7 @@ w <- rmvnorm(1, sigma = sigma_true^2 * exp(-phi_true^2 * d)) %>%
 y <- rpois(n, exp(w))
 
 sigma_w <- sigma_true^2 * exp(-phi_true^2 * d)
-w_init <- rep(0, n)
+w_init <- log(y + .5)
 fit_proxy <- estim_gaussian_proxy(w_init, y, sigma_w)
 
 df_plot <- NULL
@@ -117,7 +119,7 @@ df_plot %>%
 # Gaussian approximation of posterior:
 # Checking the marginal distribution
 # -------------------------------------------------
-n <- 300
+n <- 100
 
 set.seed(126)
 coords <- cbind(runif(n), runif(n))
@@ -136,9 +138,10 @@ d <- dist(coords) %>%
 w <- rmvnorm(1, sigma = sigma_true^2 * exp(-phi_true^2 * d)) %>%
   c()
 y <- rpois(n, exp(w))
-
+table(y == 0) %>%
+  prop.table()
 sigma_w <- sigma_true^2 * exp(-phi_true^2 * d)
-w_init <- rep(0, n)
+w_init <- log(y + .5)
 fit_proxy <- estim_gaussian_proxy(w_init, y, sigma_w)
 
 h <- 0.05
@@ -154,7 +157,7 @@ for (i in 1:n_sample) {
   
   df_plot <- rep(w, each = length(w_grid)) %>%
     matrix(ncol = n) %>%
-    as_tibble()
+    as_tibble(.name_repair = make.names)
   df_plot[,id] <- w_grid
   names(df_plot) <- paste0("w", 1:n)
   
@@ -170,7 +173,7 @@ for (i in 1:n_sample) {
   p <- ggplot(df_plot, aes_string(x = paste0("w", id))) +
     geom_line(aes(y = exact)) +
     geom_line(aes(y = proxy), linetype = 2, col = "red") +
-    geom_point(aes(x = w[id], y = 0))
+    geom_point(data = tibble(w = w[id]), aes(x = w, y = 0))
   plots[[i]] <- p
 }
 
@@ -179,7 +182,7 @@ plot_grid(plotlist = plots, nrow = 2)
 # -------------------------------------------------
 # Checking Laplace proxy
 # -------------------------------------------------
-n <- 300
+n <- 200
 
 set.seed(126)
 coords <- cbind(runif(n), runif(n))
@@ -195,28 +198,32 @@ phi_true <- 2.3
 # Generate data
 d <- dist(coords) %>%
   as.matrix()
-w <- rmvnorm(1, sigma = sigma_true^2 * exp(-phi_true^2 * d)) %>%
+sigma_w <- sigma_true^2 * exp(-phi_true^2 * d)
+w <- rmvnorm(1, sigma = sigma_w) %>%
   c()
-y <- rpois(n, 2 + exp(w))
+y <- rpois(n, exp(w))
+
+# Decay
+plot(d[,1], sigma_w[,1])
 
 hist(y)
 table(y == 0) %>%
   prop.table()
 
 parms_grid <- tibble(
-  log_sigma = seq(.5, 3, length.out = 10),
-  log_phi = seq(.1, 5, length.out = 10)
+  log_sigma = seq(sigma_true / 10, 5 * sigma_true, length.out = 10),
+  log_phi = seq(phi_true / 10, 5 * sigma_true, length.out = 10)
 ) %>%
-  expand.grid() %>%
-  mutate_all(log)
+  mutate_all(log) %>%
+  expand.grid()
 
-w_init <- rep(0, n)
-sigma_w <- sigma_true^2 * exp(-phi_true^2 * d)
-fit_proxy <- estim_gaussian_proxy(w_init, y, sigma_w)
-
+w_init <- log(y + .5)
 ll <- apply(
-  parms_grid, 1, laplace, y = y, coords = coords, w_hat = fit_proxy$mu, 
-  sigma_hat = fit_proxy$sigma, a = 2, mu_w = rep(0, n))
+  parms_grid, 1, laplace, y = y, coords = coords, w_init = w_init,
+  mu_w = rep(0, n))
+
+gauss <- estim_gaussian_proxy(w_init, y, sigma_w)
+plot(gauss$mu, w); abline(a = 0, b = 1)
 
 parms_grid <- parms_grid %>%
   mutate(ll)
@@ -228,13 +235,4 @@ ggplot(parms_grid, aes(x = log_sigma, y = log_phi)) +
     data = tibble(sigma_true, phi_true), 
     aes(x = log(sigma_true), y = log(phi_true)),
     shape = 3, size = 5
-  )
-
-parms_grid %>%
-  filter(ll == max(ll)) %>%
-  mutate(
-    sigma = exp(log_sigma),
-    phi = exp(log_phi),
-    sigma_true,
-    phi_true
   )
