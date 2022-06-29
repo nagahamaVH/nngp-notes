@@ -15,7 +15,7 @@ library(ggplot2)
 library(cowplot)
 library(mvtnorm)
 library(microbenchmark)
-source("./nngp-notes/codes/gp_nngp_ll.R")
+source("./nngp-notes/codes/gaussian_functs.R")
 
 generate_data <- function(n, seed = NULL) {
   set.seed(seed)
@@ -46,7 +46,7 @@ confint_par <- function(l) {
   return(ci)
 }
 
-n <- 100
+n <- 20
 m <- 3
 
 set.seed(126)
@@ -58,16 +58,15 @@ coords <- coords[ord,]
 
 # Parameters
 sigma <- 3
-phi <- 4
-tau <- 0.6
+phi <- 2
+tau <- 0.1
 
 # Generate data
 d <- dist(coords) %>%
   as.matrix()
 w <- rmvnorm(1, sigma = sigma^2 * exp(-phi^2 * d)) %>%
   c()
-eps <- rnorm(n, 0, tau)
-y <- w + eps
+y <- rnorm(n, w, tau)
 
 # -----------------------
 # Univariate plot
