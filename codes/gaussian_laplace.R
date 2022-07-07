@@ -104,7 +104,7 @@ laplace <- function(y, coords, p_init, w_init, mu_w = rep(0, length(y))) {
   w_hat <- gauss$mu
   sigma_hat <- gauss$sigma
   
-  denom <- -(length(y) / 2) * log(2 * pi) - 0.5 * log(det(sigma_hat) + sqrt(.Machine$double.xmin))
+  denom <- -(length(y) / 2) * log(2 * pi) - 0.5 * determinant(sigma_hat)$modulus
   ll <- posterior(y, w_hat, tau, sigma_w, mu_w, log = T) - denom
   
   if (ll == -Inf) {
@@ -164,9 +164,9 @@ plot(w, fit_proxy$mu); abline(a = 0, b = 1)
 # Gaussian approximation of posterior:
 # Comparing parameters of posterior of latent field and its Gaussian proxy
 # -------------------------------------------------
-sigma <- 8
-phi <- 2
-tau <- .5
+sigma <- .1
+phi <- phi_true
+tau <- tau_true
 w_init <- rep(0, n)
 sigma_w <- sigma^2 * exp(-phi^2 * d)
 fit_proxy <- estim_gaussian_proxy(w_init, y, tau, sigma_w)
@@ -190,7 +190,7 @@ lm(fit_proxy$sigma[id] ~ sigma_post[id])
 # Sigma
 # -----------------------------------------------------------
 parms_grid <- tibble(
-  log_sigma = seq(1, 8, by = 0.01),
+  log_sigma = seq(.01, 50, by = 1),
   phi = phi_true,
   tau = tau_true
 ) %>%
@@ -278,12 +278,53 @@ ggplot(parms_grid, aes(x = log_tau)) +
   geom_line(aes(y = ll)) +
   geom_line(aes(y = la), linetype = 2, color = "red")
 
+# Bivariate plot
+parms_grid <- tibble(
+  log_sigma = seq(.1 * sigma_true, 1.5 * sigma_true, length.out = 10),
+  log_phi = seq(.1 * phi_true, 1.5 * phi_true, length.out = 10),
+  tau = tau_true
+) %>%
+  mutate_all(log) %>%
+  expand.grid()
+
+la <- apply(
+  parms_grid, 1, laplace, y = y, coords = coords, w_init = w_init,
+  mu_w = rep(0, n))
+
+ll <- apply(
+  parms_grid, 1, gp_ll, y = y, coords = coords)
+
+parms_grid <- parms_grid %>%
+  mutate(ll, la)
+
+p1 <- ggplot(parms_grid, aes(x = log_sigma, y = log_phi)) +
+  geom_contour_filled(aes(z = ll)) +
+  geom_point(data = parms_grid[which.max(parms_grid$ll),], size = 5) +
+  geom_point(
+    data = tibble(sigma_true, phi_true), 
+    aes(x = log(sigma_true), y = log(phi_true)),
+    shape = 3, size = 5
+  ) +
+  theme(legend.position = "none")
+
+p2 <- ggplot(parms_grid, aes(x = log_sigma, y = log_phi)) +
+  geom_contour_filled(aes(z = la)) +
+  geom_point(data = parms_grid[which.max(parms_grid$ll),], size = 5) +
+  geom_point(
+    data = tibble(sigma_true, phi_true), 
+    aes(x = log(sigma_true), y = log(phi_true)),
+    shape = 3, size = 5
+  ) +
+  theme(title = "laplace approximation")
+
+plot_grid(p1, p2, nrow = 1)
+
 # -----------------------------------------------------------
 # Checking Laplace approximation estimation
 # -----------------------------------------------------------
 # Likelihood
 gp <- optim(
-  log(c(1, 1, 1)), gp_ll, coords = coords, y = y, method = "BFGS",
+  log(c(1, 1, 1)), gp_ll, coords = coords, y = y, method = "Nelder-Mead",
   control = list(fnscale = -1), hessian = T)
 
 sigma_hat <- deltamethod(

@@ -182,7 +182,7 @@ plot_grid(plotlist = plots, nrow = 2)
 # -------------------------------------------------
 # Checking Laplace proxy
 # -------------------------------------------------
-n <- 200
+n <- 1000
 
 set.seed(126)
 coords <- cbind(runif(n), runif(n))
@@ -211,8 +211,8 @@ table(y == 0) %>%
   prop.table()
 
 parms_grid <- tibble(
-  log_sigma = seq(sigma_true / 10, 5 * sigma_true, length.out = 10),
-  log_phi = seq(phi_true / 10, 5 * sigma_true, length.out = 10)
+  log_sigma = seq(.5 * sigma_true, 1.5 * sigma_true, length.out = 10),
+  log_phi = seq(.5 * phi_true, 1.5 * phi_true, length.out = 10)
 ) %>%
   mutate_all(log) %>%
   expand.grid()

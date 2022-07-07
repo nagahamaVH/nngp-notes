@@ -54,7 +54,7 @@ laplace <- function(y, coords, p_init, w_init, a = 0, mu_w = rep(0, length(y))) 
   w_hat <- gauss$mu
   sigma_hat <- gauss$sigma
 
-  denom <- -(length(y) / 2) * log(2 * pi) - 0.5 * log(det(sigma_hat) + sqrt(.Machine$double.xmin))
+  denom <- -(length(y) / 2) * log(2 * pi) - 0.5 * determinant(sigma_hat)$modulus
   ll <- posterior(y, w_hat, sigma_w, a, mu_w, log = T) - denom
   return(ll)
 }
