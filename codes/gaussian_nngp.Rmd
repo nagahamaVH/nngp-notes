@@ -1,12 +1,12 @@
 ---
-title: "Poisson NNGP"
+title: "Gaussian NNGP"
 author: "Victor Hugo Nagahama"
 date: '2022-10-25'
 output: html_document
 editor_options: 
   chunk_output_type: console
 ---
-
+  
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -16,7 +16,7 @@ library(dplyr)
 library(mvtnorm)
 ```
 
-In order to illustrate the estimation of NNGP for non-Gaussian responses in spatial data we will perform a simulation as follow
+In order to illustrate the estimation of NNGP for Gaussian responses in spatial data we will perform a simulation as follow
 
 ## Simulated data
 
@@ -29,7 +29,7 @@ In order to illustrate the estimation of NNGP for non-Gaussian responses in spat
 where the covariance matrix $C(\boldsymbol{\psi})$ is the Squared Exponential (SE) kernel in terms of signal variance and length-scale parameterization
 
 \begin{equation*}
-    \mathrm{Cov}(s_i, s_j) = \sigma^2 \exp \left\{ -\frac{(s_i - s_j)^2}{2 l^2} \right\}.
+  \mathrm{Cov}(s_i, s_j) = \sigma^2 \exp \left\{ -\frac{(s_i - s_j)^2}{2 l^2} \right\}.
 \end{equation*}
 
 ```{r}
@@ -41,16 +41,17 @@ coords <- cbind(runif(n), runif(n))
 ord <- order(coords[,1])
 coords <- coords[ord,]
 
-sigma <- 1
+sigma <- 3
 l <- 1 / 2.3
+tau <- 1
 
 d <- dist(coords) |>
   as.matrix()
 C <- sigma^2 * exp(-d / (2 * l^2))
 x <- rmvnorm(1, sigma = C) |>
   c()
-eta <- exp(x)
-y <- rpois(n, eta)
+eta <- x
+y <- rnorm(n, eta, tau)
 ```
 
 The code above simulate the presented data with latent field with covariance parameters $\sigma =$ `r sigma` and $l =$ `r round(l, 2)`.
@@ -61,22 +62,23 @@ plot(d[,1], C[,1])
 
 ```{r}
 # pi(x | y, theta) \propto pi(y | x, theta) * pi(x | theta)
-posterior <- function(y, x, sigma_x, log = T) {
-  eta <- exp(x)
-  ll <- sum(dpois(y, eta, log = T)) + dmvnorm(x, sigma = sigma_x, log = T)
+posterior <- function(y, x, sigma_x, tau, log = T) {
+  eta <- x
+  ll <- sum(dnorm(y, eta, tau, log = T)) + dmvnorm(x, sigma = sigma_x, log = T)
   if (!log) {
     ll <- exp(ll)
   }
   return(ll)
 }
 
-grad <- function(x, y) {
-  y - exp(x)
+grad <- function(x, y, tau) {
+  1 / tau^2 * (y - x)
 }
 
-hess <- function(x) {
-  -exp(x)
+hess <- function(tau) {
+  -1 / tau^2
 }
+
 ```
 
 ## NNGP
@@ -133,27 +135,27 @@ nngp_chol <- function(coords, m, p) {
     L = diag(nrow = n) - A, 
     D = diag(dd)
   )
-
+  
   return(out)
 }
 ```
 
 ```{r}
 # Laplace Approximation of pi(y | x)
-la <- function(x0, y, Cinv, grad, hess, control = list(it = 100, tol = 1e-4)) {
+la <- function(x0, y, Cinv, tau, grad, hess, control = list(it = 100, tol = 1e-4)) {
   for (i in 1:control$it) {
-    H <- diag(hess(x0), length(x0))
-    grad <- grad(x0, y)
-
+    H <- diag(hess(tau), length(x0))
+    grad <- grad(x0, y, tau)
+    
     # Covariance matrix of posterior
     Cx <- chol2inv(chol(Cinv - H))
-
+    
     mu <- as.vector(Cx %*% (grad - H %*% x0))
     if (max(abs(x0 - mu)) < control$tol) break
     if (i == control$it) stop("Max iteraction number reached")
     x0 <- mu
   }
-
+  
   parms <- list(mu = mu, sigma = Cx)
   return(parms)
 }
@@ -161,27 +163,28 @@ la <- function(x0, y, Cinv, grad, hess, control = list(it = 100, tol = 1e-4)) {
 # Estimating parameters
 la_nngp <- function(y, coords, p0, x0, grad, hess) {
   print(exp(p0))
+  tau <- exp(p0[3])
 
   # Vecchia Approx
-  LD <- nngp_chol(coords, m, exp(p0))
+  LD <- nngp_chol(coords, m, exp(p0[-3]))
   Cinv <- t(LD$L) %*% chol2inv(chol(LD$D)) %*% LD$L
   C <- chol2inv(chol(Cinv))
 
   # Laplace Approximation
-  gauss <- la(x0, y, Cinv, grad, hess)
+  gauss <- la(x0, y, Cinv, tau, grad, hess)
   x_hat <- gauss$mu
   Cx <- gauss$sigma
   
   # Log-likelihood
   denom <- -(length(y) / 2) * log(2 * pi) - 0.5 * determinant(Cx)$modulus[1]
-  ll <- posterior(y, x_hat, C) - denom
+  ll <- posterior(y, x_hat, C, tau) - denom
   return(ll)
 }
 ```
 
 ```{r check_la_nngp, eval = F}
-p0 <- c(log(5), log(5))
-x0 <- log(y + .5)
+p0 <- c(log(5), log(5), log(5))
+x0 <- rep(0, n)
 
 # debug(la_nngp)
 # la_nngp(y, coords, p0, x0, grad, hess)
@@ -192,7 +195,7 @@ fitted_parms <- optim(
   method = "Nelder-Mead", hessian = T, control = list(fnscale = -1))
 
 sigma_hat <- msm::deltamethod(
-  list(~exp(x1), ~exp(x2)), fitted_parms$par, -solve(fitted_parms$hessian), ses = F)
+  list(~exp(x1), ~exp(x2), ~exp(x3)), fitted_parms$par, -solve(fitted_parms$hessian), ses = F)
 
 confint2 <- function(mu, sigma, alpha = 0.05) {
   q <- qnorm(alpha / 2) %>% 
@@ -205,8 +208,8 @@ confint2 <- function(mu, sigma, alpha = 0.05) {
 
 ci_parms <- confint2(exp(fitted_parms$par), sigma_hat) %>%
   mutate(
-    par = c("sigma", "l"),
-    true = c(sigma, l)
+    par = c("sigma", "l", "tau"),
+    true = c(sigma, l, tau)
   )
 
 library(ggplot2)
@@ -218,10 +221,9 @@ ggplot(data = ci_parms, aes(x = "")) +
   labs(y = "Estimate", x = "")
 ```
 
-
 ```{r check_la, eval = F}
-w_init <- log(y + .5)
-fit_proxy <- la(w_init, y, solve(C), gradient, hessian)
+w_init <- y
+fit_proxy <- la(w_init, y, solve(C), tau, grad, hess)
 
 df_plot <- NULL
 w_grid <- list()
@@ -236,7 +238,7 @@ df_plot <- expand.grid(w_grid) |>
   as_tibble()
 names(df_plot) <- paste0("w", 1:n)
 
-unnorm_exact <- apply(df_plot, 1, posterior, y = y, sigma_x = C, log = F)
+unnorm_exact <- apply(df_plot, 1, posterior, y = y, sigma_x = C, tau = tau, log = F)
 unnorm_proxy <- apply(df_plot, 1, dmvnorm, fit_proxy$mu, fit_proxy$sigma) 
 
 df_plot <- df_plot %>%
@@ -254,3 +256,79 @@ df_plot %>%
   geom_point(aes(x = x[1], y = x[2]), pch = 3)
 ```
 
+```{r check_marginal_la}
+w_init <- rep(0, n)
+fit_proxy <- la(w_init, y, solve(C), tau, grad, hess)
+
+h <- 0.01
+n_sample <- 6
+set.seed(52)
+sampled <- sample(1:n, n_sample, replace = F)
+plots <- list()
+for (i in 1:n_sample) {
+  id <- sampled[i]
+
+  se <- fit_proxy$sigma[id, id] %>%
+    sqrt()
+  w_grid <- seq(fit_proxy$mu[id] - 3 * se, fit_proxy$mu[id] + 3 * se, by = h)
+  
+  df_plot <- rep(x, each = length(w_grid)) %>%
+    matrix(ncol = n) %>%
+    as_tibble(.name_repair = make.names)
+  df_plot[,id] <- w_grid
+  names(df_plot) <- paste0("w", 1:n)
+  
+  unnorm_exact <- apply(df_plot, 1, posterior, y = y, sigma_x = C, tau = tau, log = F)
+  unnorm_proxy <- apply(df_plot, 1, dmvnorm, fit_proxy$mu, fit_proxy$sigma) 
+  
+  df_plot <- df_plot %>%
+    mutate(
+      exact = unnorm_exact / sum(unnorm_exact * h^2),
+      proxy = unnorm_proxy / sum(unnorm_proxy * h^2)
+    )
+
+  p <- ggplot(df_plot, aes_string(x = paste0("w", id))) +
+    geom_line(aes(y = exact)) +
+    geom_line(aes(y = proxy), linetype = 2, col = "red") +
+    geom_point(data = tibble(w = x[id]), aes(x = w, y = 0))
+  plots[[i]] <- p
+}
+
+cowplot::plot_grid(plotlist = plots, nrow = 2)
+
+plot(x, fit_proxy$mu); abline(a = 0, b = 1)
+```
+
+```{r check_sigma_hat}
+parms_grid <- tibble(
+  log_sigma = seq(.01, 50, by = 1),
+  l = l,
+  tau = tau
+) %>%
+  mutate_all(log)
+
+# Assuming true parameters
+w_init <- rep(0, n)
+
+# ll <- apply(parms_grid, 1, gp_ll, coords = coords, y = y)
+
+la_fit <- apply(
+  parms_grid, 1, la_nngp, y = y, coords = coords, x0 = w_init, grad = grad, hess = hess)
+
+# parms_grid <- parms_grid %>%
+#   mutate(la, ll)
+parms_grid <- parms_grid %>%
+  mutate(la_fit)
+
+parms_grid %>%
+  filter(ll == max(ll)) %>%
+  mutate(sigma = exp(log_sigma))
+
+parms_grid %>%
+  filter(la_fit == max(la_fit)) %>%
+  mutate(sigma = exp(log_sigma))
+
+ggplot(parms_grid, aes(x = log_sigma)) +
+  # geom_line(aes(y = ll)) +
+  geom_line(aes(y = la_fit), linetype = 2, color = "red")
+```
