@@ -12,7 +12,6 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r, include=FALSE}
-library(dplyr)
 library(mvtnorm)
 ```
 
@@ -34,7 +33,7 @@ where the covariance matrix $C(\boldsymbol{\psi})$ is the Squared Exponential (S
 
 ```{r}
 n <- 500
-m <- 3
+m <- 2
 set.seed(126)
 coords <- cbind(runif(n), runif(n))
 
@@ -46,8 +45,9 @@ l <- 1 / 2.3
 
 d <- dist(coords) |>
   as.matrix()
+# d <- dist(coords, diag = T, upper = T)
 C <- sigma^2 * exp(-d / (2 * l^2))
-x <- rmvnorm(1, sigma = C) |>
+x <- rmvnorm(1, sigma = C, method = "chol", checkSymmetry = F) |>
   c()
 eta <- exp(x)
 y <- rpois(n, eta)
@@ -63,7 +63,7 @@ plot(d[,1], C[,1])
 # pi(x | y, theta) \propto pi(y | x, theta) * pi(x | theta)
 posterior <- function(y, x, sigma_x, log = T) {
   eta <- exp(x)
-  ll <- sum(dpois(y, eta, log = T)) + dmvnorm(x, sigma = sigma_x, log = T)
+  ll <- sum(dpois(y, eta, log = T)) + dmvnorm(x, sigma = sigma_x, log = T, checkSymmetry = F)
   if (!log) {
     ll <- exp(ll)
   }
@@ -106,7 +106,7 @@ get_nn <- function(coords, m){
   return(list(ord = ord, nn_idx = nn_idx))
 }
 
-# Return L and D of (LDL) Cholesky decomposition of NNGP precision matrix
+# Return t(L)L Cholesky decomposition of NNGP precision matrix
 nngp_chol <- function(coords, m, p) {
   n <- dim(coords)[1]
   sigma <- p[1]
@@ -118,7 +118,8 @@ nngp_chol <- function(coords, m, p) {
   
   # Cholesky
   nn_list <- get_nn(coords, m)
-  # parallelize
+  
+  # Parallelize
   for (i in 1:(n - 1)) {
     nn <- nn_list$nn_idx[i, ]
     nn <- nn[nn != 0]
@@ -129,12 +130,10 @@ nngp_chol <- function(coords, m, p) {
     dd[i + 1] <- C[1, 1] - C[1, -1] %*% A[i + 1, nn]
   }
   
-  out <- list(
-    L = diag(nrow = n) - A, 
-    D = diag(dd)
-  )
+  Dinv <- diag(sqrt(1 / dd), nrow = n)
+  L <- tcrossprod(Dinv, t(diag(nrow = n) - A))
 
-  return(out)
+  return(L)
 }
 ```
 
@@ -142,13 +141,20 @@ nngp_chol <- function(coords, m, p) {
 # Laplace Approximation of pi(y | x)
 la <- function(x0, y, Cinv, grad, hess, control = list(it = 100, tol = 1e-4)) {
   for (i in 1:control$it) {
+    # Rearanging means
     H <- diag(hess(x0), length(x0))
-    grad <- grad(x0, y)
-
-    # Covariance matrix of posterior
-    Cx <- chol2inv(chol(Cinv - H))
-
-    mu <- as.vector(Cx %*% (grad - H %*% x0))
+    G <- grad(x0, y)
+    Cx <- chol2inv(chol(Cinv - H)) # improve?
+    mu <- as.vector(Cx %*% (G - H %*% x0))
+    
+    # N-R algorithm
+    # U <- grad(x0, y)
+    # D <- diag(-1 / hess(x0), length(x0))
+    # Dinv <- diag(-hess(x0), length(x0))
+    # Winv <- chol2inv(chol(Cinv + Dinv))
+    # t <- x0 + D %*% U
+    # mu <- Winv %*% (Dinv %*% t)
+    
     if (max(abs(x0 - mu)) < control$tol) break
     if (i == control$it) stop("Max iteraction number reached")
     x0 <- mu
@@ -163,8 +169,9 @@ la_nngp <- function(y, coords, p0, x0, grad, hess) {
   print(exp(p0))
 
   # Vecchia Approx
-  LD <- nngp_chol(coords, m, exp(p0))
-  Cinv <- t(LD$L) %*% chol2inv(chol(LD$D)) %*% LD$L
+  L <- nngp_chol(coords, m, exp(p0))
+
+  Cinv <- crossprod(L)
   C <- chol2inv(chol(Cinv))
 
   # Laplace Approximation
@@ -179,32 +186,29 @@ la_nngp <- function(y, coords, p0, x0, grad, hess) {
 }
 ```
 
-```{r check_la_nngp, eval = F}
-p0 <- c(log(5), log(5))
+```{r check_la_nngp_optim, eval = F}
+p0 <- log(c(10, 10))
 x0 <- log(y + .5)
-
-# debug(la_nngp)
-# la_nngp(y, coords, p0, x0, grad, hess)
-# undebug(la_nngp)
 
 fitted_parms <- optim(
   p0, la_nngp, y = y, coords = coords, x0 = x0, grad = grad, hess = hess,
   method = "Nelder-Mead", hessian = T, control = list(fnscale = -1))
 
 sigma_hat <- msm::deltamethod(
-  list(~exp(x1), ~exp(x2)), fitted_parms$par, -solve(fitted_parms$hessian), ses = F)
+  list(~exp(x1), ~exp(x2)), fitted_parms$par, -solve(fitted_parms$hessian), 
+  ses = F)
 
 confint2 <- function(mu, sigma, alpha = 0.05) {
-  q <- qnorm(alpha / 2) %>% 
+  q <- qnorm(alpha / 2) |> 
     abs()
   ub <- mu + q * sqrt(diag(sigma))
   lb <- mu - q * sqrt(diag(sigma))
-  ci <- tibble(ub, lb, mu)
+  ci <- data.frame(ub, lb, mu)
   return(ci)
 }
 
-ci_parms <- confint2(exp(fitted_parms$par), sigma_hat) %>%
-  mutate(
+ci_parms <- confint2(exp(fitted_parms$par), sigma_hat) |>
+  dplyr::mutate(
     par = c("sigma", "l"),
     true = c(sigma, l)
   )
@@ -218,37 +222,43 @@ ggplot(data = ci_parms, aes(x = "")) +
   labs(y = "Estimate", x = "")
 ```
 
+```{r, check_chol, eval = F}
+p0 <- c(sigma, l)
+L <- nngp_chol(coords, m, p0)
+```
 
 ```{r check_la, eval = F}
-w_init <- log(y + .5)
-fit_proxy <- la(w_init, y, solve(C), gradient, hessian)
+x0 <- log(y + .5)
+Cinv <- chol2inv(chol(C))
+fit_proxy <- la(x0, y, Cinv, grad, hess) # improve
 
 df_plot <- NULL
 w_grid <- list()
 h <- 0.05
 for (i in 1:n) {
-  se <- fit_proxy$sigma[i, i] %>%
+  se <- fit_proxy$sigma[i, i] |>
     sqrt()
   w_grid[[i]] <- seq(fit_proxy$mu[i] - 3 * se, fit_proxy$mu[i] + 3 * se, by = h)
 }
 
 df_plot <- expand.grid(w_grid) |>
-  as_tibble()
-names(df_plot) <- paste0("w", 1:n)
+  as.data.frame()
+names(df_plot) <- paste0("x", 1:n)
 
 unnorm_exact <- apply(df_plot, 1, posterior, y = y, sigma_x = C, log = F)
 unnorm_proxy <- apply(df_plot, 1, dmvnorm, fit_proxy$mu, fit_proxy$sigma) 
 
-df_plot <- df_plot %>%
-  mutate(
+df_plot <- df_plot |>
+  dplyr::mutate(
     exact = unnorm_exact / sum(unnorm_exact * h^2),
     proxy = unnorm_proxy / sum(unnorm_proxy * h^2)
   )
 
+df_longer <- df_plot |>
+  tidyr::pivot_longer(cols = c(exact, proxy), names_to = "type", values_to = "density")
+
 library(ggplot2)
-df_plot %>%
-  tidyr::pivot_longer(cols = c(exact, proxy), names_to = "type", values_to = "density") %>%
-  ggplot(., aes(x = w1, y = w2)) +
+ggplot(df_longer, aes(x = x1, y = x2)) +
   geom_contour(aes(z = density)) +
   facet_wrap(vars(type)) +
   geom_point(aes(x = x[1], y = x[2]), pch = 3)
