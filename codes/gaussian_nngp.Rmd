@@ -48,7 +48,7 @@ tau <- 1
 d <- dist(coords) |>
   as.matrix()
 C <- sigma^2 * exp(-d / (2 * l^2))
-x <- rmvnorm(1, sigma = C) |>
+x <- rmvnorm(1, sigma = C, method = "chol", checkSymmetry = F) |>
   c()
 eta <- x
 y <- rnorm(n, eta, tau)
@@ -64,7 +64,7 @@ plot(d[,1], C[,1])
 # pi(x | y, theta) \propto pi(y | x, theta) * pi(x | theta)
 posterior <- function(y, x, sigma_x, tau, log = T) {
   eta <- x
-  ll <- sum(dnorm(y, eta, tau, log = T)) + dmvnorm(x, sigma = sigma_x, log = T)
+  ll <- sum(dnorm(y, eta, tau, log = T)) + dmvnorm(x, sigma = sigma_x, log = T, checkSymmetry = F)
   if (!log) {
     ll <- exp(ll)
   }
@@ -108,7 +108,7 @@ get_nn <- function(coords, m){
   return(list(ord = ord, nn_idx = nn_idx))
 }
 
-# Return L and D of (LDL) Cholesky decomposition of NNGP precision matrix
+# Return t(L)L Cholesky decomposition of NNGP precision matrix
 nngp_chol <- function(coords, m, p) {
   n <- dim(coords)[1]
   sigma <- p[1]
@@ -120,7 +120,8 @@ nngp_chol <- function(coords, m, p) {
   
   # Cholesky
   nn_list <- get_nn(coords, m)
-  # parallelize
+  
+  # Parallelize
   for (i in 1:(n - 1)) {
     nn <- nn_list$nn_idx[i, ]
     nn <- nn[nn != 0]
@@ -131,31 +132,36 @@ nngp_chol <- function(coords, m, p) {
     dd[i + 1] <- C[1, 1] - C[1, -1] %*% A[i + 1, nn]
   }
   
-  out <- list(
-    L = diag(nrow = n) - A, 
-    D = diag(dd)
-  )
-  
-  return(out)
+  Dinv <- diag(sqrt(1 / dd), nrow = n)
+  L <- tcrossprod(Dinv, t(diag(nrow = n) - A))
+
+  return(L)
 }
 ```
 
 ```{r}
 # Laplace Approximation of pi(y | x)
-la <- function(x0, y, Cinv, tau, grad, hess, control = list(it = 100, tol = 1e-4)) {
+la <- function(x0, y, Cinv, grad, hess, tau, control = list(it = 100, tol = 1e-4)) {
   for (i in 1:control$it) {
+    # Rearanging means
     H <- diag(hess(tau), length(x0))
-    grad <- grad(x0, y, tau)
+    G <- grad(x0, y, tau)
+    Cx <- chol2inv(chol(Cinv - H)) # improve?
+    mu <- as.vector(Cx %*% (G - H %*% x0))
     
-    # Covariance matrix of posterior
-    Cx <- chol2inv(chol(Cinv - H))
+    # N-R algorithm
+    # U <- grad(x0, y)
+    # D <- diag(-1 / hess(x0), length(x0))
+    # Dinv <- diag(-hess(x0), length(x0))
+    # Winv <- chol2inv(chol(Cinv + Dinv))
+    # t <- x0 + D %*% U
+    # mu <- Winv %*% (Dinv %*% t)
     
-    mu <- as.vector(Cx %*% (grad - H %*% x0))
     if (max(abs(x0 - mu)) < control$tol) break
     if (i == control$it) stop("Max iteraction number reached")
     x0 <- mu
   }
-  
+
   parms <- list(mu = mu, sigma = Cx)
   return(parms)
 }
@@ -163,15 +169,16 @@ la <- function(x0, y, Cinv, tau, grad, hess, control = list(it = 100, tol = 1e-4
 # Estimating parameters
 la_nngp <- function(y, coords, p0, x0, grad, hess) {
   print(exp(p0))
-  tau <- exp(p0[3])
 
   # Vecchia Approx
-  LD <- nngp_chol(coords, m, exp(p0[-3]))
-  Cinv <- t(LD$L) %*% chol2inv(chol(LD$D)) %*% LD$L
+  L <- nngp_chol(coords, m, exp(p0))
+
+  Cinv <- crossprod(L)
   C <- chol2inv(chol(Cinv))
 
+  tau <- exp(p0[3])
   # Laplace Approximation
-  gauss <- la(x0, y, Cinv, tau, grad, hess)
+  gauss <- la(x0, y, Cinv, grad, hess, tau)
   x_hat <- gauss$mu
   Cx <- gauss$sigma
   
@@ -180,6 +187,54 @@ la_nngp <- function(y, coords, p0, x0, grad, hess) {
   ll <- posterior(y, x_hat, C, tau) - denom
   return(ll)
 }
+```
+
+```{r check_la_marginal, eval = F, echo = F}
+x0 <- rep(0, n)
+Cinv <- chol2inv(chol(C))
+L <- nngp_chol(coords, m, p = c(sigma, l , tau))
+Q <- crossprod(L)
+fit_proxy <- la(x0, y, Q, grad, hess, tau)
+
+h <- 0.05
+n_sample <- 6
+set.seed(523)
+sampled <- sample(1:n, n_sample, replace = F)
+plots <- list()
+
+posterior_marginal <- function(y, mu, x, C, tau) {
+  dnorm(y, mu, tau) * dmvnorm(x, sigma = C, checkSymmetry = F) 
+}
+
+for (i in 1:n_sample) {
+  id <- sampled[i]
+  se <- fit_proxy$sigma[id, id] |>
+    sqrt()
+  x_grid <- seq(fit_proxy$mu[id] - 3 * se, fit_proxy$mu[id] + 3 * se, by = h)
+  
+  df_plot <- rep(x, each = length(x_grid)) |>
+    matrix(ncol = n) |>
+    dplyr::as_tibble(.name_repair = make.names)
+  df_plot[,id] <- x_grid
+  names(df_plot) <- paste0("x", 1:n)
+  
+  unnorm_exact <- apply(df_plot, 1, posterior_marginal, y = y[id], mu = x[id], C = C, tau = tau)
+  unnorm_proxy <- apply(df_plot, 1, dmvnorm, mean = fit_proxy$mu, sigma = fit_proxy$sigma, checkSymmetry = F) 
+  
+  df_plot <- df_plot |>
+    dplyr::mutate(
+      exact = unnorm_exact / sum(unnorm_exact),
+      proxy = unnorm_proxy / sum(unnorm_proxy)
+    )
+
+  p <- ggplot(df_plot, aes_string(x = paste0("x", id))) +
+    geom_line(aes(y = exact)) +
+    geom_line(aes(y = proxy), linetype = 2, col = "red") +
+    geom_point(data = data.frame(x = fit_proxy$mu[id]), aes(x = x, y = 0))
+  plots[[i]] <- p
+}
+
+cowplot::plot_grid(plotlist = plots, nrow = 2)
 ```
 
 ```{r check_la_nngp, eval = F}

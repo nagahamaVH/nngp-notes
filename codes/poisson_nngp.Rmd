@@ -1,7 +1,7 @@
 ---
 title: "Poisson NNGP"
 author: "Victor Hugo Nagahama"
-date: '2022-10-25'
+date: '2022-11-09'
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -11,11 +11,12 @@ editor_options:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r, include=FALSE}
+```{r}
+library(ggplot2)
 library(mvtnorm)
 ```
 
-In order to illustrate the estimation of NNGP for non-Gaussian responses in spatial data we will perform a simulation as follow
+In order to illustrate the estimation of NNGP to Generalized Gaussian Process in the context of spatial data we will perform a simulation study
 
 ## Simulated data
 
@@ -33,15 +34,15 @@ where the covariance matrix $C(\boldsymbol{\psi})$ is the Squared Exponential (S
 
 ```{r}
 n <- 500
-m <- 2
-set.seed(126)
+m <- 3
+set.seed(121)
 coords <- cbind(runif(n), runif(n))
 
 ord <- order(coords[,1])
 coords <- coords[ord,]
 
-sigma <- 1
-l <- 1 / 2.3
+sigma <- 3.2
+l <- .7
 
 d <- dist(coords) |>
   as.matrix()
@@ -53,17 +54,23 @@ eta <- exp(x)
 y <- rpois(n, eta)
 ```
 
-The code above simulate the presented data with latent field with covariance parameters $\sigma =$ `r sigma` and $l =$ `r round(l, 2)`.
+The code above simulate `r n` locations in the spatial domain $\mathcal{D} = [0, 1]^2$ with covariance parameters $\sigma =$ `r round(sigma, 4)` and $l =$ `r round(l, 4)`.
 
-```{r}
-plot(d[,1], C[,1])
+```{r, echo = F}
+df <- data.frame(d = d[,1], cov = C[,1])
+ggplot(df, aes(d, cov)) +
+  geom_line() +
+  ggtitle("Correlation according to distance of spatial locations")
 ```
 
+To estimate this model 
+NNGP to Generalized Gaussian Process
+
 ```{r}
-# pi(x | y, theta) \propto pi(y | x, theta) * pi(x | theta)
+# pi(theta | x, y) \propto pi(y | x, theta) * pi(x | theta)
 posterior <- function(y, x, sigma_x, log = T) {
   eta <- exp(x)
-  ll <- sum(dpois(y, eta, log = T)) + dmvnorm(x, sigma = sigma_x, log = T, checkSymmetry = F)
+  ll <- sum(dpois(y, eta, log = T)) + dmvnorm(x, sigma = C, log = T, checkSymmetry = F)
   if (!log) {
     ll <- exp(ll)
   }
@@ -186,8 +193,22 @@ la_nngp <- function(y, coords, p0, x0, grad, hess) {
 }
 ```
 
-```{r check_la_nngp_optim, eval = F}
-p0 <- log(c(10, 10))
+```{r, eval = F}
+p0 <- log(c(5, 5))
+x0 <- log(y + .5)
+
+fitted_parms <- optim(
+  p0, la_nngp, y = y, coords = coords, x0 = x0, grad = grad, hess = hess,
+  method = "Nelder-Mead", hessian = T, control = list(fnscale = -1))
+```
+
+```{r echo=FALSE, out.width = "80%"}
+knitr::include_graphics("../images/par_poisson_nngp.png")
+```
+
+<!-------------------------- SANITY CHECKS ------------------------------->
+```{r check_la_nngp_optim, eval = F, echo = F}
+p0 <- log(c(5, 5))
 x0 <- log(y + .5)
 
 fitted_parms <- optim(
@@ -213,24 +234,137 @@ ci_parms <- confint2(exp(fitted_parms$par), sigma_hat) |>
     true = c(sigma, l)
   )
 
-library(ggplot2)
 ggplot(data = ci_parms, aes(x = "")) +
   facet_wrap(~par, scales = "free") +
+  geom_hline(aes(yintercept = true), lty = 2) +
   geom_linerange(aes(ymin = lb, ymax = ub)) +
   geom_point(aes(y = mu)) +
-  geom_hline(aes(yintercept = true), lty = 2, col = "red") +
-  labs(y = "Estimate", x = "")
+  labs(y = "", x = "", title = "Estimated parameter")
+# cowplot::save_plot(filename = "./images/par_poisson_nngp.png", plot = last_plot())
 ```
 
-```{r, check_chol, eval = F}
-p0 <- c(sigma, l)
-L <- nngp_chol(coords, m, p0)
+```{r check_chol, eval = F, echo = F}
+n <- 50
+m <- n - 1
+set.seed(126)
+coords <- cbind(runif(n), runif(n))
+
+ord <- order(coords[,1])
+coords <- coords[ord,]
+
+sigma <- 2
+l <- 1 / 2
+
+d <- dist(coords) |>
+  as.matrix()
+# d <- dist(coords, diag = T, upper = T)
+C <- sigma^2 * exp(-d / (2 * l^2))
+x <- rmvnorm(1, sigma = C, method = "chol", checkSymmetry = F) |>
+  c()
+eta <- exp(x)
+y <- rpois(n, eta)
+
+Cinv <- chol2inv(chol(C))
+
+L <- nngp_chol(coords, m, c(sigma, l))
+Q_nngp <- crossprod(L)
+
+lm(Q_nngp[lower.tri(Q_nngp)] ~ Cinv[lower.tri(Q_nngp)])
 ```
 
-```{r check_la, eval = F}
+```{r check_la_marginal, eval = F, echo = F}
+n <- 100
+m <- 3
+set.seed(126)
+coords <- cbind(runif(n), runif(n))
+
+ord <- order(coords[,1])
+coords <- coords[ord,]
+
+sigma <- 2
+l <- 1 / 2
+
+d <- dist(coords) |>
+  as.matrix()
+# d <- dist(coords, diag = T, upper = T)
+C <- sigma^2 * exp(-d / (2 * l^2))
+x <- rmvnorm(1, sigma = C, method = "chol", checkSymmetry = F) |>
+  c()
+eta <- exp(x)
+y <- rpois(n, eta)
+
 x0 <- log(y + .5)
 Cinv <- chol2inv(chol(C))
-fit_proxy <- la(x0, y, Cinv, grad, hess) # improve
+fit_proxy <- la(x0, y, Cinv, grad, hess)
+
+h <- 0.05
+n_sample <- 6
+set.seed(523)
+sampled <- sample(1:n, n_sample, replace = F)
+plots <- list()
+
+posterior_marginal <- function(y, mu, x, C) {
+  eta <- exp(mu)
+  dpois(y, eta) * dmvnorm(x, sigma = C, checkSymmetry = F) 
+}
+
+for (i in 1:n_sample) {
+  id <- sampled[i]
+  se <- fit_proxy$sigma[id, id] |>
+    sqrt()
+  x_grid <- seq(fit_proxy$mu[id] - 3 * se, fit_proxy$mu[id] + 3 * se, by = h)
+  
+  df_plot <- rep(x, each = length(x_grid)) |>
+    matrix(ncol = n) |>
+    dplyr::as_tibble(.name_repair = make.names)
+  df_plot[,id] <- x_grid
+  names(df_plot) <- paste0("x", 1:n)
+  
+  unnorm_exact <- apply(df_plot, 1, posterior_marginal, y = y[id], mu = x[id], C = C)
+  unnorm_proxy <- apply(df_plot, 1, dmvnorm, mean = fit_proxy$mu, sigma = fit_proxy$sigma, checkSymmetry = F) 
+  
+  df_plot <- df_plot |>
+    dplyr::mutate(
+      exact = unnorm_exact / sum(unnorm_exact),
+      proxy = unnorm_proxy / sum(unnorm_proxy)
+    )
+
+  p <- ggplot(df_plot, aes_string(x = paste0("x", id))) +
+    geom_line(aes(y = exact)) +
+    geom_line(aes(y = proxy), linetype = 2, col = "red") +
+    geom_point(data = data.frame(x = fit_proxy$mu[id]), aes(x = x, y = 0))
+  plots[[i]] <- p
+}
+
+cowplot::plot_grid(plotlist = plots, nrow = 2)
+```
+
+```{r check_la_bivar, eval = F, echo = F}
+n <- 50
+m <- n - 1
+set.seed(126)
+coords <- cbind(runif(n), runif(n))
+
+ord <- order(coords[,1])
+coords <- coords[ord,]
+
+sigma <- 2
+l <- 1 / 2
+
+d <- dist(coords) |>
+  as.matrix()
+# d <- dist(coords, diag = T, upper = T)
+C <- sigma^2 * exp(-d / (2 * l^2))
+x <- rmvnorm(10000, sigma = C, method = "chol", checkSymmetry = F) |>
+  c()
+x <- rmvnorm(10000, sigma = C, method = "chol", checkSymmetry = F) |>
+  colMeans()
+eta <- exp(x)
+y <- rpois(n, eta)
+
+x0 <- log(y + .5)
+Cinv <- chol2inv(chol(C))
+fit_proxy <- la(x0, y, Cinv, grad, hess)
 
 df_plot <- NULL
 w_grid <- list()
@@ -250,17 +384,15 @@ unnorm_proxy <- apply(df_plot, 1, dmvnorm, fit_proxy$mu, fit_proxy$sigma)
 
 df_plot <- df_plot |>
   dplyr::mutate(
-    exact = unnorm_exact / sum(unnorm_exact * h^2),
-    proxy = unnorm_proxy / sum(unnorm_proxy * h^2)
+    exact = unnorm_exact / sum(unnorm_exact),
+    proxy = unnorm_proxy / sum(unnorm_proxy)
   )
 
 df_longer <- df_plot |>
   tidyr::pivot_longer(cols = c(exact, proxy), names_to = "type", values_to = "density")
 
-library(ggplot2)
 ggplot(df_longer, aes(x = x1, y = x2)) +
   geom_contour(aes(z = density)) +
   facet_wrap(vars(type)) +
   geom_point(aes(x = x[1], y = x[2]), pch = 3)
 ```
-
