@@ -1,24 +1,32 @@
 ---
-title: "Poisson NNGP"
+title: "Generalized Gaussian Process Using NNGP"
 author: "Victor Hugo Nagahama"
-date: '2022-11-09'
-output: html_document
-editor_options: 
+date: '2022-11-16'
+output:
+  pdf_document:
+    toc: true
+    number_sections: true
+  html_document:
+    toc: true
+    number_sections: true
+editor_options:
   chunk_output_type: console
 ---
+
+***
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+
+In order to illustrate the estimation of NNGP to Generalized Gaussian Process in the context of spatial data we will perform a simulation study
 
 ```{r}
 library(ggplot2)
 library(mvtnorm)
 ```
 
-In order to illustrate the estimation of NNGP to Generalized Gaussian Process in the context of spatial data we will perform a simulation study
-
-## Simulated data
+# Simulated data
 
 \begin{align*}
   \boldsymbol{x} & \sim \mathcal{N} \left( \boldsymbol{0}, \boldsymbol{C}(\boldsymbol{\psi}) \right) \\
@@ -29,7 +37,7 @@ In order to illustrate the estimation of NNGP to Generalized Gaussian Process in
 where the covariance matrix $C(\boldsymbol{\psi})$ is the Squared Exponential (SE) kernel in terms of signal variance and length-scale parameterization
 
 \begin{equation*}
-    \mathrm{Cov}(s_i, s_j) = \sigma^2 \exp \left\{ -\frac{(s_i - s_j)^2}{2 l^2} \right\}.
+    \mathrm{C}(s_i, s_j) = \sigma^2 \exp \left\{ -\frac{(s_i - s_j)^2}{2 l^2} \right\}.
 \end{equation*}
 
 ```{r}
@@ -63,8 +71,29 @@ ggplot(df, aes(d, cov)) +
   ggtitle("Correlation according to distance of spatial locations")
 ```
 
-To estimate this model 
-NNGP to Generalized Gaussian Process
+# Steps to estimate the model
+
+1) Obtain the neighbourhood of each location
+2) For a given vector of parameters compute the Laplace approximation
+3) Compute the precision matrix
+4) Iterate steps (2) and (3) until convergence of parameters
+
+
+# Latent Gaussian Process inference
+
+Let the vector of parameters $\boldsymbol{\theta}$, then for inference we need to evaluate the likelihood function which requires to solve an integral for non-Gaussian data. A convenient solution is to apply the second-order Taylor expansion (Laplace approximation) of log $\pi(\boldsymbol{y} \mid \boldsymbol{x})$ at the mode of posterior $\pi(\boldsymbol{x} \mid \boldsymbol{y})$.
+
+\begin{equation*}
+  \boldsymbol{\mathcal{L}}(\boldsymbol{\theta}) = \pi(\boldsymbol{y} \mid \boldsymbol{\theta}) = \int \pi(\boldsymbol{y} \mid \boldsymbol{x}, \boldsymbol{\theta}) \pi(\boldsymbol{x} \mid \boldsymbol{\theta}) d\boldsymbol{x}.
+\end{equation*}
+
+Iterative applications of the Taylor expansion under regular conditions converges to the desired multivariate normal distribution.
+
+\begin{equation*}
+  \tilde{\pi}(\boldsymbol{\theta} \mid \boldsymbol{y}) \propto \frac{\pi(\boldsymbol{y} \mid \boldsymbol{x}, \boldsymbol{\theta}) \pi (\boldsymbol{x} \mid \boldsymbol{\theta})}{|\boldsymbol{Q}_{\boldsymbol{x} \mid \boldsymbol{y}}|^{1/2}} \pi(\boldsymbol{\theta}).
+\end{equation*}
+
+To estimate this model we need to define the posterior distribution of the parameter, its gradient and hessian function.
 
 ```{r}
 # pi(theta | x, y) \propto pi(y | x, theta) * pi(x | theta)
@@ -86,7 +115,52 @@ hess <- function(x) {
 }
 ```
 
-## NNGP
+# NNGP
+
+We can formalise the definition on NNGP as following. Consider a set of locations $\boldsymbol{S} = \{ \boldsymbol{s}_1, \boldsymbol{s}_2, \dots, \boldsymbol{s}_n \}$ where the data was sampled, for each location $\boldsymbol{s}_i$ we have a subset $\boldsymbol{c}(i)$ defined as the $m$ nearest neighbors of $\boldsymbol{s}_i$ then the approximation of $\pi(\boldsymbol{x})$ is given by
+
+\begin{equation}
+    \tilde{\pi}(\boldsymbol{x}) = \prod_{i=1}^n \pi \left( x_i \mid \boldsymbol{x}_{\boldsymbol{c}(i)} \right),
+    \label{joint density of nngp}
+\end{equation}
+
+\begin{equation*}
+    x_i \mid \boldsymbol{x}_{\boldsymbol{c}(i)} \sim \mathcal{N} \left( \boldsymbol{a}_i \boldsymbol{x}_{\boldsymbol{c}(i)}, \boldsymbol{D}_i \right),
+\end{equation*}
+
+\noindent
+where, $\boldsymbol{a}_i = C(s_i, \boldsymbol{c}(i)) \left(C(\boldsymbol{c}(i), \boldsymbol{c}(i) \right)^{-1}$ and $\boldsymbol{D}_i = C(s_i, s_i) - \boldsymbol{a}_i^T C(\boldsymbol{c}(i), \boldsymbol{s}_i)$.
+
+Moreover, each conditional density can be written as a linear combination of normal distributions as:
+
+\begin{align*}
+    x_1 & = \gamma_1 \\
+    x_2 & = a_{21} x_1 + \gamma_2 \\
+    x_3 & = a_{31} x_1 + a_{32} x_2 + \gamma_3
+\end{align*}
+
+where $\gamma_i \sim \mathcal{N}(0, d_i)$ with $d_1 = C(\boldsymbol{s}_1, \boldsymbol{s}_1)$. Which in the vector notation is
+
+\begin{equation*}
+    \boldsymbol{x} = \boldsymbol{x} \boldsymbol{A} + \boldsymbol{\gamma},
+\end{equation*}
+
+where $\boldsymbol{x} = (x_1, \dots, x_n)$, $\boldsymbol{\gamma} \sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{D})$ with $\boldsymbol{D} = diag(d_1, \dots, d_n)$ and $\boldsymbol{A} = (a_{ij})$ is a lower triangular matrix. Therefore,
+
+\begin{equation*}
+    (\boldsymbol{I} - \boldsymbol{A}) \boldsymbol{x} = \boldsymbol{\gamma} \Leftrightarrow \boldsymbol{x} = (\boldsymbol{I} - \boldsymbol{A})^{-1} \boldsymbol{\gamma} \sim \mathcal{N} \left( \boldsymbol{0}, (\boldsymbol{I} - \boldsymbol{A})^{-1} \boldsymbol{D} (\boldsymbol{I} - \boldsymbol{A})^{-T} \right).
+\end{equation*}
+
+So the precision matrix is sparse and has a Cholesky decomposition $\boldsymbol{L}^T \boldsymbol{L}$.
+
+\begin{align}
+  \tilde{\boldsymbol{C}}^{-1} & = (\boldsymbol{I} - \boldsymbol{A})^T \boldsymbol{D} (\boldsymbol{I} - \boldsymbol{A}) \nonumber \\
+  \boldsymbol{L} & = \boldsymbol{D}^{-1/2} (\boldsymbol{I} - \boldsymbol{A}). \label{cholesky}
+\end{align}
+
+## Getting the neighbourhood of each location
+
+For simplicity we are using the function \texttt{spConjNNGP} from the package \texttt{spNNGP} to get the neighbourhood of each location.
 
 ```{r}
 get_NN_ind <- function(ind, ind_distM_i, M){
@@ -112,7 +186,11 @@ get_nn <- function(coords, m){
   
   return(list(ord = ord, nn_idx = nn_idx))
 }
+```
 
+The code below return the Cholesky decomposition of a precision matrix from a NNGP model
+
+```{r}
 # Return t(L)L Cholesky decomposition of NNGP precision matrix
 nngp_chol <- function(coords, m, p) {
   n <- dim(coords)[1]
@@ -144,6 +222,8 @@ nngp_chol <- function(coords, m, p) {
 }
 ```
 
+The code bellow compute the Laplace Approximation
+
 ```{r}
 # Laplace Approximation of pi(y | x)
 la <- function(x0, y, Cinv, grad, hess, control = list(it = 100, tol = 1e-4)) {
@@ -170,7 +250,11 @@ la <- function(x0, y, Cinv, grad, hess, control = list(it = 100, tol = 1e-4)) {
   parms <- list(mu = mu, sigma = Cx)
   return(parms)
 }
+```
 
+The code bellow returns the log likelihood of the NNGP which can be used in the \texttt{optim} function
+
+```{r}
 # Estimating parameters
 la_nngp <- function(y, coords, p0, x0, grad, hess) {
   print(exp(p0))
