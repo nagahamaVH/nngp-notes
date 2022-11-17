@@ -19,81 +19,41 @@ editor_options:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-In order to illustrate the estimation of NNGP to Generalized Gaussian Process in the context of spatial data we will perform a simulation study
+Generalized Gaussian Process (GGP) are latent Gaussian Process (GP) with a response variable belonging to exponential family. Meanwhile, Nearest Neighbour Gaussian Process is an alternative for GPs which can be infeasible for large number of locations. 
 
-```{r}
-library(ggplot2)
-library(mvtnorm)
-```
+In this report we illustrate the estimation procedure of the combined methods in the context of spatial data through a simulation study for a small data showing each step of the procedure and then the results of estimation for a more realistic dataset.
 
-# Simulated data
+<!-- # Steps to estimate the model -->
 
-\begin{align*}
-  \boldsymbol{x} & \sim \mathcal{N} \left( \boldsymbol{0}, \boldsymbol{C}(\boldsymbol{\psi}) \right) \\
-  y_i \mid \boldsymbol{x} & \overset{iid}\sim Poisson(\eta_i), \quad \eta_i = \exp x_i,
-\end{align*}
+<!-- 1) Obtain the neighbourhood of each location -->
+<!-- 2) For a given vector of parameters compute the Laplace approximation -->
+<!-- 3) Compute the precision matrix -->
+<!-- 4) Iterate steps (2) and (3) until convergence of parameters -->
 
-\noindent
-where the covariance matrix $C(\boldsymbol{\psi})$ is the Squared Exponential (SE) kernel in terms of signal variance and length-scale parameterization
+# Inference of latent Gaussian Process
+
+Let the vector of parameters $\boldsymbol{\theta}$, then the expression of its posterior distribution can be obtained using conditional probability properties
 
 \begin{equation*}
-    \mathrm{C}(s_i, s_j) = \sigma^2 \exp \left\{ -\frac{(s_i - s_j)^2}{2 l^2} \right\}.
+    \pi(\boldsymbol{\theta} \mid \boldsymbol{y}) \propto \frac{\pi(\boldsymbol{y} \mid \boldsymbol{x}, \boldsymbol{\theta}) \pi(\boldsymbol{x} \mid \boldsymbol{\theta})}{\pi(\boldsymbol{x} \mid \boldsymbol{y}, \boldsymbol{\theta})}.
 \end{equation*}
 
-```{r}
-n <- 500
-m <- 3
-set.seed(121)
-coords <- cbind(runif(n), runif(n))
+The full conditional density in the denominator has no analytical form. Assuming a known $\boldsymbol{\theta}$ it is possible to rewrite the expression as $\pi(\boldsymbol{x} \mid \boldsymbol{y}) = \pi(\boldsymbol{x}, \boldsymbol{y}) / \pi(\boldsymbol{y})$ and obtain an approximation applying a second-order Taylor expansion (Laplace approximation) on the log joint density at the mode of posterior $\pi(\boldsymbol{x} \mid \boldsymbol{y})$
 
-ord <- order(coords[,1])
-coords <- coords[ord,]
+\begin{align}
+    \pi(\boldsymbol{x} \mid \boldsymbol{y}) & = \frac{ \pi(\boldsymbol{x}) \pi(\boldsymbol{y} \mid \boldsymbol{x})}{\pi(\boldsymbol{y})} \nonumber \\
+    & \propto \pi(\boldsymbol{x}) \pi(\boldsymbol{y} \mid \boldsymbol{x}) \label{posterior of latent field}.
+\end{align}
 
-sigma <- 3.2
-l <- .7
-
-d <- dist(coords) |>
-  as.matrix()
-# d <- dist(coords, diag = T, upper = T)
-C <- sigma^2 * exp(-d / (2 * l^2))
-x <- rmvnorm(1, sigma = C, method = "chol", checkSymmetry = F) |>
-  c()
-eta <- exp(x)
-y <- rpois(n, eta)
-```
-
-The code above simulate `r n` locations in the spatial domain $\mathcal{D} = [0, 1]^2$ with covariance parameters $\sigma =$ `r round(sigma, 4)` and $l =$ `r round(l, 4)`.
-
-```{r, echo = F}
-df <- data.frame(d = d[,1], cov = C[,1])
-ggplot(df, aes(d, cov)) +
-  geom_line() +
-  ggtitle("Correlation according to distance of spatial locations")
-```
-
-# Steps to estimate the model
-
-1) Obtain the neighbourhood of each location
-2) For a given vector of parameters compute the Laplace approximation
-3) Compute the precision matrix
-4) Iterate steps (2) and (3) until convergence of parameters
-
-
-# Latent Gaussian Process inference
-
-Let the vector of parameters $\boldsymbol{\theta}$, then for inference we need to evaluate the likelihood function which requires to solve an integral for non-Gaussian data. A convenient solution is to apply the second-order Taylor expansion (Laplace approximation) of log $\pi(\boldsymbol{y} \mid \boldsymbol{x})$ at the mode of posterior $\pi(\boldsymbol{x} \mid \boldsymbol{y})$.
+Iterative applications of the Taylor expansion under regular conditions converges to the desired multivariate normal distribution
 
 \begin{equation*}
-  \boldsymbol{\mathcal{L}}(\boldsymbol{\theta}) = \pi(\boldsymbol{y} \mid \boldsymbol{\theta}) = \int \pi(\boldsymbol{y} \mid \boldsymbol{x}, \boldsymbol{\theta}) \pi(\boldsymbol{x} \mid \boldsymbol{\theta}) d\boldsymbol{x}.
+  \tilde{\pi}(\boldsymbol{\theta} \mid \boldsymbol{y}) \propto \frac{\pi(\boldsymbol{y} \mid \boldsymbol{x}, \boldsymbol{\theta}) \pi (\boldsymbol{x} \mid \boldsymbol{\theta})}{|\boldsymbol{Q}_{\boldsymbol{x} \mid \boldsymbol{y}}|^{1/2}},
 \end{equation*}
 
-Iterative applications of the Taylor expansion under regular conditions converges to the desired multivariate normal distribution.
+where $\boldsymbol{Q}_{\boldsymbol{x} \mid \boldsymbol{y}}$ is the precision matrix of the posterior distribution of latent field.
 
-\begin{equation*}
-  \tilde{\pi}(\boldsymbol{\theta} \mid \boldsymbol{y}) \propto \frac{\pi(\boldsymbol{y} \mid \boldsymbol{x}, \boldsymbol{\theta}) \pi (\boldsymbol{x} \mid \boldsymbol{\theta})}{|\boldsymbol{Q}_{\boldsymbol{x} \mid \boldsymbol{y}}|^{1/2}} \pi(\boldsymbol{\theta}).
-\end{equation*}
-
-To estimate this model we need to define the posterior distribution of the parameter, its gradient and hessian function.
+The parameter vector and the latent field can be estimated jointly using the mentioned expression. In order to do that we need to define the posterior distribution of the parameter, its gradient and hessian function.
 
 ```{r}
 # pi(theta | x, y) \propto pi(y | x, theta) * pi(x | theta)
@@ -115,7 +75,7 @@ hess <- function(x) {
 }
 ```
 
-# NNGP
+# Nearest Neighbour Gaussian Process (NNGP)
 
 We can formalise the definition on NNGP as following. Consider a set of locations $\boldsymbol{S} = \{ \boldsymbol{s}_1, \boldsymbol{s}_2, \dots, \boldsymbol{s}_n \}$ where the data was sampled, for each location $\boldsymbol{s}_i$ we have a subset $\boldsymbol{c}(i)$ defined as the $m$ nearest neighbors of $\boldsymbol{s}_i$ then the approximation of $\pi(\boldsymbol{x})$ is given by
 
@@ -158,7 +118,52 @@ So the precision matrix is sparse and has a Cholesky decomposition $\boldsymbol{
   \boldsymbol{L} & = \boldsymbol{D}^{-1/2} (\boldsymbol{I} - \boldsymbol{A}). \label{cholesky}
 \end{align}
 
-## Getting the neighbourhood of each location
+# Applying the method
+
+Consider the following data
+
+\begin{align*}
+  \boldsymbol{x} & \sim \mathcal{N} \left( \boldsymbol{0}, \boldsymbol{C}(\boldsymbol{\psi}) \right) \\
+  y_i \mid \boldsymbol{x} & \overset{iid}\sim Poisson(\eta_i), \quad \eta_i = \exp x_i,
+\end{align*}
+
+\noindent
+where the covariance matrix $C(\boldsymbol{\psi})$ is the Squared Exponential (SE) kernel in terms of signal variance and length-scale parameterization
+
+\begin{equation*}
+    \mathrm{C}(s_i, s_j) = \sigma^2 \exp \left\{ -\frac{(s_i - s_j)^2}{2 l^2} \right\}.
+\end{equation*}
+
+```{r}
+library(ggplot2)
+library(mvtnorm)
+```
+
+```{r}
+n <- 10
+m <- 3
+set.seed(163)
+coords <- cbind(runif(n), runif(n))
+
+ord <- order(coords[,1])
+coords <- coords[ord,]
+
+sigma <- 1.6
+l <- .4
+
+d <- dist(coords) |>
+  as.matrix()
+# d <- dist(coords, diag = T, upper = T)
+C <- sigma^2 * exp(-d / (2 * l^2))
+x <- rmvnorm(1, sigma = C, method = "chol", checkSymmetry = F) |>
+  c()
+eta <- exp(x)
+y <- rpois(n, eta)
+```
+
+The code above simulate `r n` locations in the spatial domain $\mathcal{D} = [0, 1]^2$ with covariance parameters $\sigma =$ `r round(sigma, 4)` and $l =$ `r round(l, 4)`.
+
+## NNGP: Neighbourhood of each location
 
 For simplicity we are using the function \texttt{spConjNNGP} from the package \texttt{spNNGP} to get the neighbourhood of each location.
 
@@ -187,6 +192,12 @@ get_nn <- function(coords, m){
   return(list(ord = ord, nn_idx = nn_idx))
 }
 ```
+
+```{r}
+get_nn(coords, m)
+```
+
+## NNGP: Compute precision matrix
 
 The code below return the Cholesky decomposition of a precision matrix from a NNGP model
 
@@ -222,6 +233,8 @@ nngp_chol <- function(coords, m, p) {
 }
 ```
 
+## Laplace approximation of full posterior of latent field
+
 The code bellow compute the Laplace Approximation
 
 ```{r}
@@ -252,11 +265,13 @@ la <- function(x0, y, Cinv, grad, hess, control = list(it = 100, tol = 1e-4)) {
 }
 ```
 
+## Function to joint estimate the parameters and latent field
+
 The code bellow returns the log likelihood of the NNGP which can be used in the \texttt{optim} function
 
 ```{r}
 # Estimating parameters
-la_nngp <- function(y, coords, p0, x0, grad, hess) {
+la_nngp <- function(y, coords, p0, x0, grad, hess, m) {
   print(exp(p0))
 
   # Vecchia Approx
@@ -277,13 +292,39 @@ la_nngp <- function(y, coords, p0, x0, grad, hess) {
 }
 ```
 
+# Simulation study
+
+```{r}
+n <- 500
+m <- 10
+set.seed(163)
+coords <- cbind(runif(n), runif(n))
+
+ord <- order(coords[,1])
+coords <- coords[ord,]
+
+sigma <- 2.6
+l <- .4
+
+d <- dist(coords) |>
+  as.matrix()
+# d <- dist(coords, diag = T, upper = T)
+C <- sigma^2 * exp(-d / (2 * l^2))
+x <- rmvnorm(1, sigma = C, method = "chol", checkSymmetry = F) |>
+  c()
+eta <- exp(x)
+y <- rpois(n, eta)
+```
+
 ```{r, eval = F}
 p0 <- log(c(5, 5))
 x0 <- log(y + .5)
 
+init <- proc.time()
 fitted_parms <- optim(
-  p0, la_nngp, y = y, coords = coords, x0 = x0, grad = grad, hess = hess,
+  p0, la_nngp, y = y, coords = coords, x0 = x0, grad = grad, hess = hess, m = m,
   method = "Nelder-Mead", hessian = T, control = list(fnscale = -1))
+proc.time() - init
 ```
 
 ```{r echo=FALSE, out.width = "80%"}
@@ -296,7 +337,7 @@ p0 <- log(c(5, 5))
 x0 <- log(y + .5)
 
 fitted_parms <- optim(
-  p0, la_nngp, y = y, coords = coords, x0 = x0, grad = grad, hess = hess,
+  p0, la_nngp, y = y, coords = coords, x0 = x0, grad = grad, hess = hess, m = m,
   method = "Nelder-Mead", hessian = T, control = list(fnscale = -1))
 
 sigma_hat <- msm::deltamethod(
