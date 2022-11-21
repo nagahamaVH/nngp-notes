@@ -16,21 +16,21 @@ editor_options:
 ***
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(
+  echo = TRUE,
+  attr.source = ".numberLines",
+  fig.height = 3,
+  fig.width = 7
+)
 ```
 
-Generalized Gaussian Process (GGP) are latent Gaussian Process (GP) with a response variable belonging to exponential family. Meanwhile, Nearest Neighbour Gaussian Process is an alternative for GPs which can be infeasible for large number of locations. 
+Generalized Gaussian Process (GGP) are latent Gaussian Process (GP) which the response variable belong to a distribution of exponential family. Nearest Neighbour Gaussian Process (NNGP) is an alternative for GPs that becomes infeasible for large number of locations.
 
-In this report we illustrate the estimation procedure of the combined methods in the context of spatial data through a simulation study for a small data showing each step of the procedure and then the results of estimation for a more realistic dataset.
+In this report we review GGP regression and NNGP; and illustrate the estimation procedure of the combined methods in the context of spatial data through a simulation study covering each step in details and then the results of estimation for a more realistic dataset.
 
-<!-- # Steps to estimate the model -->
+# Inference of latent Gaussian Process model
 
-<!-- 1) Obtain the neighbourhood of each location -->
-<!-- 2) For a given vector of parameters compute the Laplace approximation -->
-<!-- 3) Compute the precision matrix -->
-<!-- 4) Iterate steps (2) and (3) until convergence of parameters -->
-
-# Inference of latent Gaussian Process
+There are two interest quantities that we want to estimate in a latent Gaussian Process model, the latent field $\pi(\boldsymbol{x} \mid \boldsymbol{y})$ and the posterior distribution of parameters $\pi(\boldsymbol{\theta} \mid \boldsymbol{y})$.
 
 Let the vector of parameters $\boldsymbol{\theta}$, then the expression of its posterior distribution can be obtained using conditional probability properties
 
@@ -84,12 +84,14 @@ We can formalise the definition on NNGP as following. Consider a set of location
     \label{joint density of nngp}
 \end{equation}
 
-\begin{equation*}
-    x_i \mid \boldsymbol{x}_{\boldsymbol{c}(i)} \sim \mathcal{N} \left( \boldsymbol{a}_i \boldsymbol{x}_{\boldsymbol{c}(i)}, \boldsymbol{D}_i \right),
-\end{equation*}
-
-\noindent
-where, $\boldsymbol{a}_i = C(s_i, \boldsymbol{c}(i)) \left(C(\boldsymbol{c}(i), \boldsymbol{c}(i) \right)^{-1}$ and $\boldsymbol{D}_i = C(s_i, s_i) - \boldsymbol{a}_i^T C(\boldsymbol{c}(i), \boldsymbol{s}_i)$.
+\begin{equation}
+    x_i \mid \boldsymbol{x}_{\boldsymbol{c}(i)} \sim \mathcal{N} \left( \boldsymbol{a}_i \boldsymbol{x}_{\boldsymbol{c}(i)}, \boldsymbol{D}_i \right) \quad
+    \begin{cases}
+        \boldsymbol{a}_i = C(s_i, \boldsymbol{c}(i)) \left(C(\boldsymbol{c}(i), \boldsymbol{c}(i) \right)^{-1} \\
+        \boldsymbol{D}_i = C(s_i, s_i) - \boldsymbol{a}_i^T C(\boldsymbol{c}(i), \boldsymbol{s}_i)
+    \end{cases}.
+    \label{conditional densities of nngp}
+\end{equation}
 
 Moreover, each conditional density can be written as a linear combination of normal distributions as:
 
@@ -102,23 +104,27 @@ Moreover, each conditional density can be written as a linear combination of nor
 where $\gamma_i \sim \mathcal{N}(0, d_i)$ with $d_1 = C(\boldsymbol{s}_1, \boldsymbol{s}_1)$. Which in the vector notation is
 
 \begin{equation*}
-    \boldsymbol{x} = \boldsymbol{x} \boldsymbol{A} + \boldsymbol{\gamma},
+    \boldsymbol{x} = \boldsymbol{A} \boldsymbol{x} + \boldsymbol{\gamma},
 \end{equation*}
 
 where $\boldsymbol{x} = (x_1, \dots, x_n)$, $\boldsymbol{\gamma} \sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{D})$ with $\boldsymbol{D} = diag(d_1, \dots, d_n)$ and $\boldsymbol{A} = (a_{ij})$ is a lower triangular matrix. Therefore,
 
-\begin{equation*}
-    (\boldsymbol{I} - \boldsymbol{A}) \boldsymbol{x} = \boldsymbol{\gamma} \Leftrightarrow \boldsymbol{x} = (\boldsymbol{I} - \boldsymbol{A})^{-1} \boldsymbol{\gamma} \sim \mathcal{N} \left( \boldsymbol{0}, (\boldsymbol{I} - \boldsymbol{A})^{-1} \boldsymbol{D} (\boldsymbol{I} - \boldsymbol{A})^{-T} \right).
-\end{equation*}
+\begin{align*}
+  & \boldsymbol{x} = \boldsymbol{A} \boldsymbol{x} + \boldsymbol{\gamma} \\
+  & \Leftrightarrow \boldsymbol{x} - \boldsymbol{A} \boldsymbol{x} = \boldsymbol{\gamma} \\
+  & \Leftrightarrow (\boldsymbol{I} - \boldsymbol{A}) \boldsymbol{x} = \boldsymbol{\gamma} \\
+  & \Leftrightarrow \boldsymbol{x} = (\boldsymbol{I} - \boldsymbol{A})^{-1} \boldsymbol{\gamma} \\
+  & \therefore \boldsymbol{x} \sim \mathcal{N} \left( \boldsymbol{0}, (\boldsymbol{I} - \boldsymbol{A})^{-1} \boldsymbol{D} (\boldsymbol{I} - \boldsymbol{A})^{-T} \right).
+\end{align*}
 
-So the precision matrix is sparse and has a Cholesky decomposition $\boldsymbol{L}^T \boldsymbol{L}$.
+Which generates a sparse precision matrix that has a Cholesky decomposition $\boldsymbol{L}^T \boldsymbol{L}$
 
 \begin{align}
   \tilde{\boldsymbol{C}}^{-1} & = (\boldsymbol{I} - \boldsymbol{A})^T \boldsymbol{D} (\boldsymbol{I} - \boldsymbol{A}) \nonumber \\
   \boldsymbol{L} & = \boldsymbol{D}^{-1/2} (\boldsymbol{I} - \boldsymbol{A}). \label{cholesky}
 \end{align}
 
-# Applying the method
+# Implementation
 
 Consider the following data
 
@@ -140,7 +146,7 @@ library(mvtnorm)
 ```
 
 ```{r}
-n <- 10
+n <- 15
 m <- 3
 set.seed(163)
 coords <- cbind(runif(n), runif(n))
@@ -153,7 +159,6 @@ l <- .4
 
 d <- dist(coords) |>
   as.matrix()
-# d <- dist(coords, diag = T, upper = T)
 C <- sigma^2 * exp(-d / (2 * l^2))
 x <- rmvnorm(1, sigma = C, method = "chol", checkSymmetry = F) |>
   c()
@@ -163,7 +168,7 @@ y <- rpois(n, eta)
 
 The code above simulate `r n` locations in the spatial domain $\mathcal{D} = [0, 1]^2$ with covariance parameters $\sigma =$ `r round(sigma, 4)` and $l =$ `r round(l, 4)`.
 
-## NNGP: Neighbourhood of each location
+## NNGP: Find the neighbourhood of each location
 
 For simplicity we are using the function \texttt{spConjNNGP} from the package \texttt{spNNGP} to get the neighbourhood of each location.
 
@@ -193,16 +198,22 @@ get_nn <- function(coords, m){
 }
 ```
 
+The code bellow shows the neighbours of the locations 2 to 6.
+
 ```{r}
-get_nn(coords, m)
+nn <- get_nn(coords, m)
+print(nn$nn_idx[1:5,])
 ```
 
 ## NNGP: Compute precision matrix
 
-The code below return the Cholesky decomposition of a precision matrix from a NNGP model
+As mentioned to compute the sparse precision matrix we must compute the matrices $\boldsymbol{A}$ and $\boldsymbol{D}$ using \eqref{conditional densities of nngp}. The function \texttt{nngp\_chol()} compute the mentioned matrices and the Cholesky decomposition of the precision matrix.
+
+The main idea of the algorithm is to initialise $\boldsymbol{A} = (\boldsymbol{a}_1, \dots, \boldsymbol{a}_n)$ as matrix of zeros and the vector $\boldsymbol{d} = diag(\boldsymbol{D})$ with $d_1 = C(\boldsymbol{S}_1, \boldsymbol{S}_1)$ then for each location $i = 2, \dots, n$ we update the the matrix and vector according to the neighbours of $i$.
 
 ```{r}
-# Return t(L)L Cholesky decomposition of NNGP precision matrix
+# Compute Cholesky decomposition of the precision matrix returning A, D^{-1} and 
+# L matrices. (Q = (I - A)^T D^{-1} (I - A), where L = D^{-1/2} (I - A))
 nngp_chol <- function(coords, m, p) {
   n <- dim(coords)[1]
   sigma <- p[1]
@@ -212,7 +223,7 @@ nngp_chol <- function(coords, m, p) {
   A <- matrix(rep(0, n^2), n)
   dd <- c(sigma^2, rep(0, n - 1))
   
-  # Cholesky
+  # Get the neighbour list
   nn_list <- get_nn(coords, m)
   
   # Parallelize
@@ -226,14 +237,148 @@ nngp_chol <- function(coords, m, p) {
     dd[i + 1] <- C[1, 1] - C[1, -1] %*% A[i + 1, nn]
   }
   
-  Dinv <- diag(sqrt(1 / dd), nrow = n)
-  L <- tcrossprod(Dinv, t(diag(nrow = n) - A))
-
-  return(L)
+  Dinv <- diag(1 / dd, nrow = n)
+  L <- tcrossprod(diag(sqrt(1 / dd), nrow = n), t(diag(nrow = n) - A))
+  
+  l <- list(A = A, Dinv = Dinv, L = L)
+  return(l)
 }
 ```
 
-## Laplace approximation of full posterior of latent field
+Let's look the update for location 8. Assuming a known parameters, first we initialise $\boldsymbol{A}$ and $\boldsymbol{d}$ (named \texttt{dd} in the code bellow); and obtain the neighbours for each point.
+
+```{r}
+# Initialize A and dd = diag(D)
+A <- matrix(rep(0, n^2), n)
+dd <- c(sigma^2, rep(0, n - 1))
+
+# Get the neighbour list
+nn_list <- get_nn(coords, m)
+
+i <- 7
+
+nn <- nn_list$nn_idx[i, ]
+nn <- nn[nn != 0]
+```
+
+Then we compute the covariance matrix between the location 8 and its neighbours considering the location 8 in the first position of the matrix.
+
+```{r}
+d <- dist(coords[c(i + 1, nn),]) |>
+  as.matrix()
+Cm <- sigma^2 * exp(-d / (2 * l^2))
+
+print(Cm)
+```
+
+Considering the neighbourhood of 8 use \eqref{conditional densities of nngp} to compute $\boldsymbol{a}_8$ and $d_8$ and update $\boldsymbol{A}$ and $\boldsymbol{d}$.
+
+```{r}
+A[i + 1, nn] <- solve(Cm[-1, -1], Cm[-1, 1])
+dd[i + 1] <- Cm[1, 1] - Cm[1, -1] %*% A[i + 1, nn]
+
+print(A[i + 1, nn])
+print(dd[i + 1])
+```
+
+Computing for locations $i = 2, \dots, n$ then we have the matrix $\boldsymbol{A}$ and $\boldsymbol{D}$ which can the sparsity can be visualised as follows in the plots bellow, where black represents non zero values.
+
+```{r, echo = F}
+precision <- data.frame(
+  x = 1:n,
+  y = 1:n
+) |>
+  expand.grid()
+
+precision$gp <- solve(C) |>
+  as.vector() |>
+  magrittr::is_greater_than(0) |>
+  as.numeric()
+
+nngp_decomp <- nngp_chol(coords, m, c(sigma, l))
+
+precision$IA <- as.vector(diag(nrow = n) - nngp_decomp$A) |>
+  magrittr::is_greater_than(0) |>
+  as.numeric()
+
+precision$Dinv <- as.vector(nngp_decomp$Dinv) |>
+  magrittr::is_greater_than(0) |>
+  as.numeric()
+
+precision$nngp <- crossprod(nngp_decomp$L) |>
+  as.vector() |>
+  magrittr::is_greater_than(0) |>
+  as.numeric()
+
+precision$gp_cov <- C |>
+  as.vector() |>
+  as.numeric()
+
+precision$nngp_cov <- crossprod(nngp_decomp$L) |>
+  solve() |>
+  as.vector() |>
+  as.numeric()
+
+matrix_plot <- list(
+  geom_tile(),
+  scale_fill_gradient(low = "white", high = "black"),
+  theme_bw(),
+  scale_x_reverse(expand = c(0,0)),
+  scale_y_continuous(expand = c(0,0)),
+  theme(
+    aspect.ratio = 1,
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5)
+  )
+)
+
+p1 <- ggplot(precision, aes(x, y, fill = IA)) +
+  matrix_plot +
+  labs(x = "", y = "", title = "(I - A)")
+
+p2 <- ggplot(precision, aes(x, y, fill = Dinv)) +
+  matrix_plot +
+  labs(x = "", y = "", title = expression(D^{-1}))
+
+p3 <- ggplot(precision, aes(x, y, fill = nngp)) +
+  matrix_plot +
+  labs(x = "", y = "", title = expression(tilde(C)^{-1}))
+
+cowplot::plot_grid(p1, p2, p3, nrow = 1)
+```
+
+We can compare the Full GP (original) precision matrix and the NNGP version. Obviously $\tilde{C}^{-1}$ becomes more sparse as $n$ increase and $m$ is small.
+
+```{r, echo = F}
+p1 <- ggplot(precision, aes(x, y, fill = gp)) +
+  matrix_plot +
+  labs(x = "", y = "", title = "Full GP")
+
+p2 <- ggplot(precision, aes(x, y, fill = nngp)) +
+  matrix_plot +
+  labs(x = "", y = "", title = "NNGP")
+
+cowplot::plot_grid(p1, p2, nrow = 1)
+```
+
+As expected, the approximation $\tilde{\boldsymbol{C}}$ is almost indistinguishable from its original covariance matrix.
+
+```{r, echo = F}
+p1 <- ggplot(precision, aes(x, y, fill = gp_cov)) +
+  matrix_plot +
+  labs(x = "", y = "", title = expression(C))
+
+p2 <- ggplot(precision, aes(x, y, fill = nngp_cov)) +
+  matrix_plot +
+  labs(x = "", y = "", title = expression(tilde(C)))
+
+cowplot::plot_grid(p1, p2, nrow = 1)
+```
+
+## Laplace Approximation: Compute full posterior of latent field
 
 The code bellow compute the Laplace Approximation
 
@@ -265,7 +410,7 @@ la <- function(x0, y, Cinv, grad, hess, control = list(it = 100, tol = 1e-4)) {
 }
 ```
 
-## Function to joint estimate the parameters and latent field
+## Wrapping everything in a single function
 
 The code bellow returns the log likelihood of the NNGP which can be used in the \texttt{optim} function
 
