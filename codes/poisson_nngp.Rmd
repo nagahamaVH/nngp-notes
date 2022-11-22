@@ -1,7 +1,7 @@
 ---
 title: "Generalized Gaussian Process Using NNGP"
 author: "Victor Hugo Nagahama"
-date: '2022-11-16'
+date: "2022-11-22"
 output:
   pdf_document:
     toc: true
@@ -11,6 +11,7 @@ output:
     number_sections: true
 editor_options:
   chunk_output_type: console
+bibliography: references.bib
 ---
 
 ***
@@ -75,7 +76,7 @@ where each conditional density follows a normal distribution with parameters
     \label{conditional densities of nngp}
 \end{equation}
 
-The goal here is to find the parameters of the multivariate normal distribution \eqref{joint density of nngp}. In order to obtain that, we write the conditional densities as a linear combination of normal distributions $\gamma_i \sim \mathcal{N}(0, d_i)$
+The goal here is to find the parameters of the multivariate normal distribution in \eqref{joint density of nngp}. In order to obtain that, we write the conditional densities as a linear combination of normal densities $\gamma_i \sim \mathcal{N}(0, d_i)$
 
 \begin{align*}
     x_1 & = \gamma_1 \\
@@ -91,26 +92,52 @@ Stacking the vectors we have
     \boldsymbol{x} = \boldsymbol{A} \boldsymbol{x} + \boldsymbol{\gamma},
 \end{equation*}
 
-where $\boldsymbol{A} = (a_{ij})$ is a lower triangular matrix and $\boldsymbol{\gamma} \sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{D})$ with $\boldsymbol{D} = diag(d_1, \dots, d_n)$. Finally we have the specification of \eqref{joint density of nngp}
+where $\boldsymbol{A} = (a_{ij})$ is a lower triangular matrix and $\boldsymbol{\gamma} \sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{D})$ with $\boldsymbol{D} = diag(d_1, \dots, d_n)$. Finally we have the specification of \eqref{joint density of nngp} which has a sparse precision matrix and Cholesky decomposition $\boldsymbol{L}^T \boldsymbol{L}$
 
 \begin{align*}
   & \boldsymbol{x} = \boldsymbol{A} \boldsymbol{x} + \boldsymbol{\gamma} \\
   & \Leftrightarrow \boldsymbol{x} - \boldsymbol{A} \boldsymbol{x} = \boldsymbol{\gamma} \\
   & \Leftrightarrow (\boldsymbol{I} - \boldsymbol{A}) \boldsymbol{x} = \boldsymbol{\gamma} \\
   & \Leftrightarrow \boldsymbol{x} = (\boldsymbol{I} - \boldsymbol{A})^{-1} \boldsymbol{\gamma} \\
-  & \therefore \boldsymbol{x} \sim \mathcal{N} \left( \boldsymbol{0}, (\boldsymbol{I} - \boldsymbol{A})^{-1} \boldsymbol{D} (\boldsymbol{I} - \boldsymbol{A})^{-T} \right).
+  & \therefore \boldsymbol{x} \sim \mathcal{N} \left( \boldsymbol{0}, (\boldsymbol{I} - \boldsymbol{A})^{-1} \boldsymbol{D} (\boldsymbol{I} - \boldsymbol{A})^{-T} \right)
 \end{align*}
-
-Which has a sparse precision matrix with Cholesky decomposition $\boldsymbol{L}^T \boldsymbol{L}$
 
 \begin{align}
   \tilde{\boldsymbol{C}}^{-1} & = (\boldsymbol{I} - \boldsymbol{A})^T \boldsymbol{D} (\boldsymbol{I} - \boldsymbol{A}) \nonumber \\
   \boldsymbol{L} & = \boldsymbol{D}^{-1/2} (\boldsymbol{I} - \boldsymbol{A}). \label{cholesky}
 \end{align}
 
+# Laplace Approximation
+
+Let a vector of non-normal response $\boldsymbol{y}$ belonging to exponential family and a latent field $\boldsymbol{x} \sim GP(\boldsymbol{\mu}, \boldsymbol{Q})$. Consider $g(\boldsymbol{x}) = \log \pi (\boldsymbol{y} \mid \boldsymbol{x}, \boldsymbol{\theta})$ for a given $\boldsymbol{\theta}$ and for simplicity of notation $\nabla g^{(0)} = \left [ g'(\boldsymbol{x}^{(0)}) \right ]$ and $\boldsymbol{H}^{(0)} = \textrm{diag} \left( g''(\boldsymbol{x}^{(0)}) \right)$
+
+\begin{align*}
+    \pi(\boldsymbol{y} \mid \boldsymbol{x}, \boldsymbol{\theta}) & \approx \exp \left\{ g(\boldsymbol{x}^{(0)}) + \left(\boldsymbol{x} - \boldsymbol{x}^{(0)}\right)^T \nabla g^{(0)} + \frac{1}{2} \left(\boldsymbol{x} - \boldsymbol{x}^{(0)}\right)^T \boldsymbol{H}^{(0)} \left(\boldsymbol{x} - \boldsymbol{x}^{(0)}\right) \right\} \\
+    & = \exp \left\{ \boldsymbol{x}^T \left( \nabla g^{(0)} - \boldsymbol{H}^{(0)} \boldsymbol{x}^{(0)} \right) - \frac{1}{2} \boldsymbol{x}^T \boldsymbol{H}^{(0)} \boldsymbol{x} \right\} + \textrm{const} \\
+    & \approx \exp \left\{ \boldsymbol{x}^T \left( \nabla g^{(0)} - \boldsymbol{H}^{(0)} \boldsymbol{x}^{(0)} \right) - \frac{1}{2} \boldsymbol{x}^T \boldsymbol{H}^{(0)} \boldsymbol{x} \right\}.
+\end{align*}
+
+Replacing the above equation in \eqref{posterior of latent field} and rearranging the terms we obtain the Gaussian approximation of the posterior distribution of latent field named $\tilde{\pi}(\boldsymbol{x} \mid \boldsymbol{y}, \boldsymbol{\theta})$.
+
+\begin{align*}
+    \tilde{\pi}(\boldsymbol{x} \mid \boldsymbol{y}, \boldsymbol{\theta}) & \propto \pi(\boldsymbol{x} \mid \boldsymbol{\theta}) \pi(\boldsymbol{y} \mid \boldsymbol{x}, \boldsymbol{\theta}) \\
+    & \approx  \exp \left\{ \boldsymbol{x}^T \boldsymbol{Q} \boldsymbol{\mu} - \frac{1}{2} \boldsymbol{x}^T \boldsymbol{Q} \boldsymbol{x} \right\} \exp \left\{ \boldsymbol{x}^T \left( \nabla g^{(0)} - \boldsymbol{H}^{(0)} \boldsymbol{x}^{(0)} \right) - \frac{1}{2} \boldsymbol{x}^T \boldsymbol{H}^{(0)} \boldsymbol{x} \right\} \\
+    & = \exp \left\{ \boldsymbol{x}^T \left( \nabla g^{(0)} - \boldsymbol{H}^{(0)} \boldsymbol{x}^{(0)} + \boldsymbol{Q} \boldsymbol{\mu} \right) - \frac{1}{2} \boldsymbol{x}^T \left( \boldsymbol{Q} + \boldsymbol{H}^{(0)} \right) \boldsymbol{x} \right\},
+\end{align*}
+
+\noindent
+which is a multivariate normal distribution with parameters
+
+\begin{align}
+    \boldsymbol{\mu}^{(0)}_{\boldsymbol{x} \mid \boldsymbol{y}} & = \boldsymbol{\mu} + \boldsymbol{Q}^{-1}_{\boldsymbol{x} \mid \boldsymbol{y}} \left( \nabla g^{(0)} - \boldsymbol{H}^{(0)} \boldsymbol{x}^{(0)} \right) \label{posterior mean of x} \\
+    \boldsymbol{Q}^{(0)}_{\boldsymbol{x} \mid \boldsymbol{y}} & = \boldsymbol{Q} - \boldsymbol{H}^{(0)}. \label{posterior precision matrix of x}
+\end{align}
+
+Note that the approximation depends on $\boldsymbol{x}^{(0)}$ and vector of parameters $\boldsymbol{\theta}$, iterated applications of the quadratic approximation under regularity conditions converges to the mode of $\pi (\boldsymbol{x} \mid \boldsymbol{y}, \boldsymbol{\theta})$ and consequently produces a good approximation of its distribution. The method mentioned is actually the application of a Newton-Raphson algorithm on the log posterior of latent field as showed by @zilber2021vecchia.
+
 # Implementation
 
-Consider the following data
+Consider a data
 
 \begin{align*}
   \boldsymbol{x} & \sim \mathcal{N} \left( \boldsymbol{0}, \boldsymbol{C}(\boldsymbol{\psi}) \right) \\
@@ -149,11 +176,11 @@ eta <- exp(x)
 y <- rpois(n, eta)
 ```
 
-The code above simulate `r n` locations in the spatial domain $\mathcal{D} = [0, 1]^2$ with covariance parameters $\sigma =$ `r round(sigma, 4)` and $l =$ `r round(l, 4)`.
+The code above simulate `r n` locations in the spatial domain $\mathcal{D} = [0, 1]^2$ following the mentioned data with covariance parameters $\sigma =$ `r round(sigma, 4)` and $l =$ `r round(l, 4)`.
 
-## NNGP: Find the neighbourhood of each location
+## NNGP: Find the neighbours of each location
 
-For simplicity we are using the function `spConjNNGP()` from the package `spNNGP` to get the neighbourhood of each location.
+For simplicity we are using the function `spConjNNGP()` from the package `spNNGP` to get the $m$ nearest neighbours of each location.
 
 ```{r}
 get_NN_ind <- function(ind, ind_distM_i, M){
@@ -181,19 +208,15 @@ get_nn <- function(coords, m){
 }
 ```
 
-The code bellow shows the neighbours of the locations 2 to 6.
+The code bellow shows the neighbours of the locations 2 to 6, considering a neighbour size equals to 3.
 
 ```{r}
-m <- 3
-nn <- get_nn(coords, m)
+nn <- get_nn(coords, 3)
 print(nn$nn_idx[1:5,])
 ```
 
 ## NNGP: Compute precision matrix
-
-To compute the sparse precision matrix we must compute the matrices $\boldsymbol{A}$ and $\boldsymbol{D}$ using \eqref{conditional densities of nngp}. The function `nngp_chol()` compute the mentioned matrices and the Cholesky decomposition of the precision matrix.
-
-The main idea of the algorithm is to initialise $\boldsymbol{A} = (\boldsymbol{a}_1, \dots, \boldsymbol{a}_n)$ as matrix of zeros and the vector $\boldsymbol{d} = diag(\boldsymbol{D})$ with $d_1 = C(\boldsymbol{S}_1, \boldsymbol{S}_1)$ then for each location $i = 2, \dots, n$ we update the matrix and vector according to the neighbours of $i$.
+The function `nngp_chol()` compute the $\boldsymbol{A}$ and $\boldsymbol{D}$ matrices and the Cholesky decomposition of the precision matrix using \eqref{conditional densities of nngp} and \eqref{cholesky}. The main idea of the algorithm is to initialise $\boldsymbol{A} = (\boldsymbol{a}_1, \dots, \boldsymbol{a}_n)$ as matrix of zeros and the vector $\boldsymbol{d} = diag(\boldsymbol{D})$ with $d_1 = C(\boldsymbol{S}_1, \boldsymbol{S}_1)$ then for each location $i = 2, \dots, n$ we update the matrix and vector according to its neighbours.
 
 ```{r}
 # Compute Cholesky decomposition of the precision matrix returning A, D^{-1} and 
@@ -229,7 +252,7 @@ nngp_chol <- function(coords, m, p) {
 }
 ```
 
-For example let's calculate for location of index 8. Assuming known parameters, first we initialise $\boldsymbol{A}$ and $\boldsymbol{d}$ (named `dd` in the code bellow); and obtain the neighbours for each point.
+For example, let's calculate for location of index 8. Assuming known parameters and $m = 3$, first we initialise $\boldsymbol{A}$ and $\boldsymbol{d}$ (named `dd` in the code bellow); and obtain the neighbours for each point.
 
 ```{r}
 # Initialize A and dd = diag(D)
@@ -237,35 +260,40 @@ A <- matrix(rep(0, n^2), n)
 dd <- c(sigma^2, rep(0, n - 1))
 
 # Get the neighbour list
-nn_list <- get_nn(coords, m)
+nn_list <- get_nn(coords, 3)
 
-i <- 7
+i <- 8
 
 nn <- nn_list$nn_idx[i, ]
 nn <- nn[nn != 0]
+nn
 ```
 
-Then we compute the covariance matrix between the location 8 and its neighbours considering the location 8 in the first position of the matrix.
+Then we compute the covariance matrix between the location 9 and its neighbours.
 
 ```{r}
 d <- dist(coords[c(i + 1, nn),]) |>
   as.matrix()
 Cm <- sigma^2 * exp(-d / (2 * l^2))
 
-print(Cm)
+Cm
 ```
 
-Considering the neighbourhood of 8 use \eqref{conditional densities of nngp} to compute $\boldsymbol{a}_8$ and $d_8$ and update $\boldsymbol{A}$ and $\boldsymbol{d}$.
+Considering the neighbours of 9 use \eqref{conditional densities of nngp} to compute $\boldsymbol{a}_9$ and $d_9$ and update $\boldsymbol{A}$ and $\boldsymbol{d}$.
 
 ```{r}
 A[i + 1, nn] <- solve(Cm[-1, -1], Cm[-1, 1])
 dd[i + 1] <- Cm[1, 1] - Cm[1, -1] %*% A[i + 1, nn]
-
-print(A[i + 1, nn])
-print(dd[i + 1])
 ```
 
-Computing for locations $i = 2, \dots, n$ then we have the matrix $\boldsymbol{A}$ and $\boldsymbol{D}$ which can the sparsity can be visualise as follows in the plots bellow, where black represents non zero values.
+Computed $\boldsymbol{a}_8$ and $d_8$:
+
+```{r}
+A[i + 1,]
+dd[i + 1]
+```
+
+After applying the procedure for all $i = 2, \dots, n$ we obtain the computed matrix $\boldsymbol{A}$ and $\boldsymbol{D}$. In images bellow black represents non zero values.
 
 ```{r, echo = F}
 precision <- data.frame(
@@ -279,7 +307,7 @@ precision$gp <- solve(C) |>
   magrittr::is_greater_than(0) |>
   as.numeric()
 
-nngp_decomp <- nngp_chol(coords, m, c(sigma, l))
+nngp_decomp <- nngp_chol(coords, 3, c(sigma, l))
 
 precision$IA <- as.vector(diag(nrow = n) - nngp_decomp$A) |>
   magrittr::is_greater_than(0) |>
@@ -334,7 +362,7 @@ p3 <- ggplot(precision, aes(x, y, fill = nngp)) +
 cowplot::plot_grid(p1, p2, p3, nrow = 1)
 ```
 
-We can compare the Full GP (original) precision matrix and the NNGP version. Obviously $\tilde{C}^{-1}$ becomes more sparse as $n$ increase and $m$ is small.
+Also we can compare the full GP (original) precision matrix and the NNGP version.
 
 ```{r, echo = F}
 p1 <- ggplot(precision, aes(x, y, fill = gp)) +
@@ -394,7 +422,7 @@ la <- function(x0, y, Cinv, grad, hess, control = list(it = 100, tol = 1e-4)) {
 }
 ```
 
-For simplicity let's show the approximation for a univariate setting $y \mid x \sim Poisson(\eta)$ and $x \sim \mathcal{N}(0, \sigma^2)$ where $\eta = \exp(x)$ and the parameter is known.
+For simplicity let's show the approximation for a univariate setting $y \mid x \sim Poisson(\eta)$ and $x \sim \mathcal{N}(0, \sigma^2)$ where $\eta = \exp(x)$ and the parameter is known. The plot bellow shows the exact density obtained from the posterior (continuous) and its Laplace Approximation (dashed), the dot represents the value which the Taylor expansion is centered, that is $\hat{x}$.
 
 ```{r, echo = F, fig.height = 4}
 C <- diag(2.5, ncol = 1)
@@ -532,7 +560,7 @@ eta <- exp(x)
 y <- rpois(n, eta)
 ```
 
-We have to define the log posterior of the parameters, its gradient and hessian function.
+We have to define the log posterior of the parameters, the gradient and hessian function of the data likelihood.
 
 ```{r}
 # pi(theta | x, y) \propto pi(y | x, theta) * pi(x | theta)
@@ -571,6 +599,8 @@ knitr::include_graphics("../images/par_poisson_nngp.png")
 plot latent field
 plot y_hat
 -->
+
+# References
 
 <!-------------------------- SANITY CHECKS ------------------------------->
 ```{r check_la_nngp_optim, eval = F, echo = F}
