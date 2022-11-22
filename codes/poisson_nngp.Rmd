@@ -55,26 +55,6 @@ where $\boldsymbol{Q}_{\boldsymbol{x} \mid \boldsymbol{y}}$ is the precision mat
 
 The parameter vector and the latent field can be estimated jointly using the mentioned expression. In order to do that we need to define the posterior distribution of the parameter, its gradient and hessian function.
 
-```{r}
-# pi(theta | x, y) \propto pi(y | x, theta) * pi(x | theta)
-posterior <- function(y, x, sigma_x, log = T) {
-  eta <- exp(x)
-  ll <- sum(dpois(y, eta, log = T)) + dmvnorm(x, sigma = C, log = T, checkSymmetry = F)
-  if (!log) {
-    ll <- exp(ll)
-  }
-  return(ll)
-}
-
-grad <- function(x, y) {
-  y - exp(x)
-}
-
-hess <- function(x) {
-  -exp(x)
-}
-```
-
 # Nearest Neighbour Gaussian Process (NNGP)
 
 We can formalise the definition on NNGP as following. Consider a set of locations $\boldsymbol{S} = \{ \boldsymbol{s}_1, \boldsymbol{s}_2, \dots, \boldsymbol{s}_n \}$ where the data was sampled, for each location $\boldsymbol{s}_i$ we have a subset $\boldsymbol{c}(i)$ defined as the $m$ nearest neighbors of $\boldsymbol{s}_i$ then the approximation of $\pi(\boldsymbol{x})$ is given by
@@ -84,30 +64,34 @@ We can formalise the definition on NNGP as following. Consider a set of location
     \label{joint density of nngp}
 \end{equation}
 
+where each conditional density follows a normal distribution with parameters
+
 \begin{equation}
-    x_i \mid \boldsymbol{x}_{\boldsymbol{c}(i)} \sim \mathcal{N} \left( \boldsymbol{a}_i \boldsymbol{x}_{\boldsymbol{c}(i)}, \boldsymbol{D}_i \right) \quad
+    x_i \mid \boldsymbol{x}_{\boldsymbol{c}(i)} \sim \mathcal{N} \left( \boldsymbol{a}_i \boldsymbol{x}_{\boldsymbol{c}(i)}, d_i \right) \quad
     \begin{cases}
-        \boldsymbol{a}_i = C(s_i, \boldsymbol{c}(i)) \left(C(\boldsymbol{c}(i), \boldsymbol{c}(i) \right)^{-1} \\
-        \boldsymbol{D}_i = C(s_i, s_i) - \boldsymbol{a}_i^T C(\boldsymbol{c}(i), \boldsymbol{s}_i)
+        \boldsymbol{a}_i = C(\boldsymbol{s}_i, \boldsymbol{c}(i)) \left(C(\boldsymbol{c}(i), \boldsymbol{c}(i) \right)^{-1} \\
+        d_i = C(\boldsymbol{s}_i, \boldsymbol{s}_i) - \boldsymbol{a}_i^T C(\boldsymbol{c}(i), \boldsymbol{s}_i)
     \end{cases}.
     \label{conditional densities of nngp}
 \end{equation}
 
-Moreover, each conditional density can be written as a linear combination of normal distributions as:
+The goal here is to find the parameters of the multivariate normal distribution \eqref{joint density of nngp}. In order to obtain that, we write the conditional densities as a linear combination of normal distributions $\gamma_i \sim \mathcal{N}(0, d_i)$
 
 \begin{align*}
     x_1 & = \gamma_1 \\
     x_2 & = a_{21} x_1 + \gamma_2 \\
-    x_3 & = a_{31} x_1 + a_{32} x_2 + \gamma_3
+    x_3 & = a_{31} x_1 + a_{32} x_2 + \gamma_3 \\
+    \vdots & \qquad \vdots \\
+    x_n & = a_{n1} x_1 + a_{n2} x_2 + \dots + \gamma_n.
 \end{align*}
 
-where $\gamma_i \sim \mathcal{N}(0, d_i)$ with $d_1 = C(\boldsymbol{s}_1, \boldsymbol{s}_1)$. Which in the vector notation is
+Stacking the vectors we have
 
 \begin{equation*}
     \boldsymbol{x} = \boldsymbol{A} \boldsymbol{x} + \boldsymbol{\gamma},
 \end{equation*}
 
-where $\boldsymbol{x} = (x_1, \dots, x_n)$, $\boldsymbol{\gamma} \sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{D})$ with $\boldsymbol{D} = diag(d_1, \dots, d_n)$ and $\boldsymbol{A} = (a_{ij})$ is a lower triangular matrix. Therefore,
+where $\boldsymbol{A} = (a_{ij})$ is a lower triangular matrix and $\boldsymbol{\gamma} \sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{D})$ with $\boldsymbol{D} = diag(d_1, \dots, d_n)$. Finally we have the specification of \eqref{joint density of nngp}
 
 \begin{align*}
   & \boldsymbol{x} = \boldsymbol{A} \boldsymbol{x} + \boldsymbol{\gamma} \\
@@ -117,7 +101,7 @@ where $\boldsymbol{x} = (x_1, \dots, x_n)$, $\boldsymbol{\gamma} \sim \mathcal{N
   & \therefore \boldsymbol{x} \sim \mathcal{N} \left( \boldsymbol{0}, (\boldsymbol{I} - \boldsymbol{A})^{-1} \boldsymbol{D} (\boldsymbol{I} - \boldsymbol{A})^{-T} \right).
 \end{align*}
 
-Which generates a sparse precision matrix that has a Cholesky decomposition $\boldsymbol{L}^T \boldsymbol{L}$
+Which has a sparse precision matrix with Cholesky decomposition $\boldsymbol{L}^T \boldsymbol{L}$
 
 \begin{align}
   \tilde{\boldsymbol{C}}^{-1} & = (\boldsymbol{I} - \boldsymbol{A})^T \boldsymbol{D} (\boldsymbol{I} - \boldsymbol{A}) \nonumber \\
@@ -147,7 +131,6 @@ library(mvtnorm)
 
 ```{r}
 n <- 15
-m <- 3
 set.seed(163)
 coords <- cbind(runif(n), runif(n))
 
@@ -170,7 +153,7 @@ The code above simulate `r n` locations in the spatial domain $\mathcal{D} = [0,
 
 ## NNGP: Find the neighbourhood of each location
 
-For simplicity we are using the function \texttt{spConjNNGP} from the package \texttt{spNNGP} to get the neighbourhood of each location.
+For simplicity we are using the function `spConjNNGP()` from the package `spNNGP` to get the neighbourhood of each location.
 
 ```{r}
 get_NN_ind <- function(ind, ind_distM_i, M){
@@ -201,15 +184,16 @@ get_nn <- function(coords, m){
 The code bellow shows the neighbours of the locations 2 to 6.
 
 ```{r}
+m <- 3
 nn <- get_nn(coords, m)
 print(nn$nn_idx[1:5,])
 ```
 
 ## NNGP: Compute precision matrix
 
-As mentioned to compute the sparse precision matrix we must compute the matrices $\boldsymbol{A}$ and $\boldsymbol{D}$ using \eqref{conditional densities of nngp}. The function \texttt{nngp\_chol()} compute the mentioned matrices and the Cholesky decomposition of the precision matrix.
+To compute the sparse precision matrix we must compute the matrices $\boldsymbol{A}$ and $\boldsymbol{D}$ using \eqref{conditional densities of nngp}. The function `nngp_chol()` compute the mentioned matrices and the Cholesky decomposition of the precision matrix.
 
-The main idea of the algorithm is to initialise $\boldsymbol{A} = (\boldsymbol{a}_1, \dots, \boldsymbol{a}_n)$ as matrix of zeros and the vector $\boldsymbol{d} = diag(\boldsymbol{D})$ with $d_1 = C(\boldsymbol{S}_1, \boldsymbol{S}_1)$ then for each location $i = 2, \dots, n$ we update the the matrix and vector according to the neighbours of $i$.
+The main idea of the algorithm is to initialise $\boldsymbol{A} = (\boldsymbol{a}_1, \dots, \boldsymbol{a}_n)$ as matrix of zeros and the vector $\boldsymbol{d} = diag(\boldsymbol{D})$ with $d_1 = C(\boldsymbol{S}_1, \boldsymbol{S}_1)$ then for each location $i = 2, \dots, n$ we update the matrix and vector according to the neighbours of $i$.
 
 ```{r}
 # Compute Cholesky decomposition of the precision matrix returning A, D^{-1} and 
@@ -245,7 +229,7 @@ nngp_chol <- function(coords, m, p) {
 }
 ```
 
-Let's look the update for location 8. Assuming a known parameters, first we initialise $\boldsymbol{A}$ and $\boldsymbol{d}$ (named \texttt{dd} in the code bellow); and obtain the neighbours for each point.
+For example let's calculate for location of index 8. Assuming known parameters, first we initialise $\boldsymbol{A}$ and $\boldsymbol{d}$ (named `dd` in the code bellow); and obtain the neighbours for each point.
 
 ```{r}
 # Initialize A and dd = diag(D)
@@ -281,7 +265,7 @@ print(A[i + 1, nn])
 print(dd[i + 1])
 ```
 
-Computing for locations $i = 2, \dots, n$ then we have the matrix $\boldsymbol{A}$ and $\boldsymbol{D}$ which can the sparsity can be visualised as follows in the plots bellow, where black represents non zero values.
+Computing for locations $i = 2, \dots, n$ then we have the matrix $\boldsymbol{A}$ and $\boldsymbol{D}$ which can the sparsity can be visualise as follows in the plots bellow, where black represents non zero values.
 
 ```{r, echo = F}
 precision <- data.frame(
@@ -380,7 +364,7 @@ cowplot::plot_grid(p1, p2, nrow = 1)
 
 ## Laplace Approximation: Compute full posterior of latent field
 
-The code bellow compute the Laplace Approximation
+The function `la()` compute the Laplace Approximation of the posterior of latent field.
 
 ```{r}
 # Laplace Approximation of pi(y | x)
@@ -401,7 +385,7 @@ la <- function(x0, y, Cinv, grad, hess, control = list(it = 100, tol = 1e-4)) {
     # mu <- Winv %*% (Dinv %*% t)
     
     if (max(abs(x0 - mu)) < control$tol) break
-    if (i == control$it) stop("Max iteraction number reached")
+    if (i == control$it) stop("Max iteration number reached")
     x0 <- mu
   }
 
@@ -410,9 +394,97 @@ la <- function(x0, y, Cinv, grad, hess, control = list(it = 100, tol = 1e-4)) {
 }
 ```
 
+For simplicity let's show the approximation for a univariate setting $y \mid x \sim Poisson(\eta)$ and $x \sim \mathcal{N}(0, \sigma^2)$ where $\eta = \exp(x)$ and the parameter is known.
+
+```{r, echo = F, fig.height = 4}
+C <- diag(2.5, ncol = 1)
+
+set.seed(163)
+x <- rmvnorm(1, sigma = C, method = "chol", checkSymmetry = F) |>
+  c()
+eta <- exp(x)
+y <- rpois(1, eta)
+
+posterior <- function(y, x, sigma_x, log = T) {
+  eta <- exp(x)
+  ll <- sum(dpois(y, eta, log = T)) + dmvnorm(x, sigma = sigma_x, log = T, checkSymmetry = F)
+  if (!log) {
+    ll <- exp(ll)
+  }
+  return(ll)
+}
+
+grad <- function(x, y) {
+  y - exp(x)
+}
+
+hess <- function(x) {
+  -exp(x)
+}
+
+la_example <- function(x0, y, Cinv, grad, hess, it) {
+  for (i in 1:it) {
+    H <- diag(hess(x0), length(x0))
+    G <- grad(x0, y)
+    Cx <- chol2inv(chol(Cinv - H)) # improve?
+    mu <- as.vector(Cx %*% (G - H %*% x0))
+    x0 <- mu
+  }
+  parms <- list(mu = mu, sigma = Cx)
+  return(parms)
+}
+
+Cinv <- solve(C)
+proxy <- la(log(y + .5), y, Cinv, grad, hess)
+
+h <- 0.05
+x_grid <- seq(
+  proxy$mu - 3 * c(proxy$sigma), proxy$mu + 3 * c(proxy$sigma), by = h)
+
+exact <- sapply(x_grid, posterior, y = y, sigma_x = C, log = F)
+
+df <- data.frame(
+  x = x_grid,
+  exact = exact / sum(exact * h),
+  la = dnorm(x_grid, mean = proxy$mu, sd = sqrt(proxy$sigma)) 
+)
+
+max_it <- 3
+proxy_grid <- sapply(
+  1:max_it, la_example, x0 = .9, y = y, Cinv = Cinv, grad = grad, hess = hess)
+
+p_list <- list()
+for (i in 1:max_it) {
+  mu <- proxy_grid[,i]$mu
+  sd <- sqrt(proxy_grid[,i]$sigma[1, 1])
+  df <- df |>
+    dplyr::mutate(
+      it = dnorm(x_grid, mu, sd)
+    )
+  
+  p <- ggplot(df, aes(x = x, y = exact)) +
+    geom_line() +
+    geom_line(aes(y = it), linetype = "dashed") +
+    geom_point(aes(x = mu, y = 0)) +
+    labs(y = "Density", title = paste0("Iteration ", i)) +
+    theme(plot.title = element_text(hjust = 0.5))
+  
+  p_list[[i]] <- p
+}
+
+p_list[[i + 1]] <- ggplot(df, aes(x = x, y = exact)) +
+  geom_line() +
+  geom_line(aes(y = la), linetype = "dashed") +
+  geom_point(aes(x = proxy$mu, y = 0)) +
+  labs(y = "Density", title = "Last iteration") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+cowplot::plot_grid(plotlist = p_list, ncol = 2)
+```
+
 ## Wrapping everything in a single function
 
-The code bellow returns the log likelihood of the NNGP which can be used in the \texttt{optim} function
+The function `la_nngp()` compute the precision matrix of NNGP and the Laplace Approximation returning the log likelihood of the Poisson-NNGP model given a vector of parameters.
 
 ```{r}
 # Estimating parameters
@@ -453,7 +525,6 @@ l <- .4
 
 d <- dist(coords) |>
   as.matrix()
-# d <- dist(coords, diag = T, upper = T)
 C <- sigma^2 * exp(-d / (2 * l^2))
 x <- rmvnorm(1, sigma = C, method = "chol", checkSymmetry = F) |>
   c()
@@ -461,20 +532,45 @@ eta <- exp(x)
 y <- rpois(n, eta)
 ```
 
+We have to define the log posterior of the parameters, its gradient and hessian function.
+
+```{r}
+# pi(theta | x, y) \propto pi(y | x, theta) * pi(x | theta)
+posterior <- function(y, x, sigma_x, log = T) {
+  eta <- exp(x)
+  ll <- sum(dpois(y, eta, log = T)) + dmvnorm(x, sigma = sigma_x, log = T, checkSymmetry = F)
+  if (!log) {
+    ll <- exp(ll)
+  }
+  return(ll)
+}
+
+grad <- function(x, y) {
+  y - exp(x)
+}
+
+hess <- function(x) {
+  -exp(x)
+}
+```
+
 ```{r, eval = F}
 p0 <- log(c(5, 5))
 x0 <- log(y + .5)
 
-init <- proc.time()
 fitted_parms <- optim(
   p0, la_nngp, y = y, coords = coords, x0 = x0, grad = grad, hess = hess, m = m,
   method = "Nelder-Mead", hessian = T, control = list(fnscale = -1))
-proc.time() - init
 ```
 
 ```{r echo=FALSE, out.width = "80%"}
 knitr::include_graphics("../images/par_poisson_nngp.png")
 ```
+
+<!-- 
+plot latent field
+plot y_hat
+-->
 
 <!-------------------------- SANITY CHECKS ------------------------------->
 ```{r check_la_nngp_optim, eval = F, echo = F}
