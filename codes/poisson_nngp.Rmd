@@ -1,5 +1,5 @@
 ---
-title: "Generalized Gaussian Process Using NNGP"
+title: "Generalized Gaussian Process using NNGP"
 author: "Victor Hugo Nagahama"
 date: "2022-11-22"
 output:
@@ -39,22 +39,22 @@ Let the vector of parameters $\boldsymbol{\theta}$, then the expression of its p
     \pi(\boldsymbol{\theta} \mid \boldsymbol{y}) \propto \frac{\pi(\boldsymbol{y} \mid \boldsymbol{x}, \boldsymbol{\theta}) \pi(\boldsymbol{x} \mid \boldsymbol{\theta})}{\pi(\boldsymbol{x} \mid \boldsymbol{y}, \boldsymbol{\theta})}.
 \end{equation*}
 
-The full conditional density in the denominator has no analytical form. Assuming a known $\boldsymbol{\theta}$ it is possible to rewrite the expression as $\pi(\boldsymbol{x} \mid \boldsymbol{y}) = \pi(\boldsymbol{x}, \boldsymbol{y}) / \pi(\boldsymbol{y})$ and obtain an approximation applying a second-order Taylor expansion (Laplace approximation) on the log joint density at the mode of posterior $\pi(\boldsymbol{x} \mid \boldsymbol{y})$
+The full conditional density in the denominator has no analytical form. A convenient solution is to assume a known $\boldsymbol{\theta}$, rewrite the expression as $\pi(\boldsymbol{x} \mid \boldsymbol{y}) = \pi(\boldsymbol{x}, \boldsymbol{y}) / \pi(\boldsymbol{y})$ and obtain an approximation applying a second-order Taylor expansion (Laplace approximation) on the log joint density at the mode of posterior $\pi(\boldsymbol{x} \mid \boldsymbol{y})$
 
 \begin{align}
-    \pi(\boldsymbol{x} \mid \boldsymbol{y}) & = \frac{ \pi(\boldsymbol{x}) \pi(\boldsymbol{y} \mid \boldsymbol{x})}{\pi(\boldsymbol{y})} \nonumber \\
+    \pi(\boldsymbol{x} \mid \boldsymbol{y}) & = \frac{\pi(\boldsymbol{y} \mid \boldsymbol{x}) \pi(\boldsymbol{x})}{\pi(\boldsymbol{y})} \nonumber \\
     & \propto \pi(\boldsymbol{x}) \pi(\boldsymbol{y} \mid \boldsymbol{x}) \label{posterior of latent field}.
 \end{align}
 
-Iterative applications of the Taylor expansion under regular conditions converges to the desired multivariate normal distribution
+Iterative applications of the Taylor expansion under regular conditions converges a good approximation of the desired conditional density $\tilde{\pi}(\boldsymbol{x} | \boldsymbol{y})$ which in fact it is a multivariate normal distribution will be demonstrated in the section bellow. After obtaining the approximation, the posterior of parameters resumes to
 
 \begin{equation*}
   \tilde{\pi}(\boldsymbol{\theta} \mid \boldsymbol{y}) \propto \frac{\pi(\boldsymbol{y} \mid \boldsymbol{x}, \boldsymbol{\theta}) \pi (\boldsymbol{x} \mid \boldsymbol{\theta})}{|\boldsymbol{Q}_{\boldsymbol{x} \mid \boldsymbol{y}}|^{1/2}},
 \end{equation*}
 
-where $\boldsymbol{Q}_{\boldsymbol{x} \mid \boldsymbol{y}}$ is the precision matrix of the posterior distribution of latent field.
+where $\boldsymbol{Q}_{\boldsymbol{x} \mid \boldsymbol{y}}$ is the precision matrix of the approximation of full conditional of latent field $\tilde{\pi}(\boldsymbol{x} | \boldsymbol{y})$.
 
-The parameter vector and the latent field can be estimated jointly using the mentioned expression. In order to do that we need to define the posterior distribution of the parameter, its gradient and hessian function.
+So basically the parameters and latent field are jointly estimated. In fact, we assume an initial values for those, compute the Laplace approximation updating the estimation of latent field and evaluate the posterior of parameters.
 
 # Nearest Neighbour Gaussian Process (NNGP)
 
@@ -99,7 +99,7 @@ where $\boldsymbol{A} = (a_{ij})$ is a lower triangular matrix and $\boldsymbol{
   & \Leftrightarrow \boldsymbol{x} - \boldsymbol{A} \boldsymbol{x} = \boldsymbol{\gamma} \\
   & \Leftrightarrow (\boldsymbol{I} - \boldsymbol{A}) \boldsymbol{x} = \boldsymbol{\gamma} \\
   & \Leftrightarrow \boldsymbol{x} = (\boldsymbol{I} - \boldsymbol{A})^{-1} \boldsymbol{\gamma} \\
-  & \therefore \boldsymbol{x} \sim \mathcal{N} \left( \boldsymbol{0}, (\boldsymbol{I} - \boldsymbol{A})^{-1} \boldsymbol{D} (\boldsymbol{I} - \boldsymbol{A})^{-T} \right)
+  & \therefore \boldsymbol{x} \sim \mathcal{N} \left( \boldsymbol{0}, \underbrace{(\boldsymbol{I} - \boldsymbol{A})^{-1} \boldsymbol{D} (\boldsymbol{I} - \boldsymbol{A})^{-T}}_{\tilde{\boldsymbol{C}}} \right)
 \end{align*}
 
 \begin{align}
@@ -107,9 +107,11 @@ where $\boldsymbol{A} = (a_{ij})$ is a lower triangular matrix and $\boldsymbol{
   \boldsymbol{L} & = \boldsymbol{D}^{-1/2} (\boldsymbol{I} - \boldsymbol{A}). \label{cholesky}
 \end{align}
 
-# Laplace Approximation
+# Laplace approximation
 
-Let a vector of non-normal response $\boldsymbol{y}$ belonging to exponential family and a latent field $\boldsymbol{x} \sim GP(\boldsymbol{\mu}, \boldsymbol{Q})$. Consider $g(\boldsymbol{x}) = \log \pi (\boldsymbol{y} \mid \boldsymbol{x}, \boldsymbol{\theta})$ for a given $\boldsymbol{\theta}$ and for simplicity of notation $\nabla g^{(0)} = \left [ g'(\boldsymbol{x}^{(0)}) \right ]$ and $\boldsymbol{H}^{(0)} = \textrm{diag} \left( g''(\boldsymbol{x}^{(0)}) \right)$
+Let a vector of non-normal response $\boldsymbol{y}$ belonging to exponential family and a latent field $\boldsymbol{x} \sim GP(\boldsymbol{\mu}, \boldsymbol{C}^{-1})$. We want to to approximate the full conditional density $\pi(\boldsymbol{x} \mid \boldsymbol{y}, \boldsymbol{\theta})$ as $\tilde{\pi}(\boldsymbol{x} \mid \boldsymbol{y}, \boldsymbol{\theta})$, in order to do that we apply a second order Taylor expansion on $\log \pi (\boldsymbol{y} \mid \boldsymbol{x}, \boldsymbol{\theta})$.
+
+Consider $g(\boldsymbol{x}) = \log \pi (\boldsymbol{y} \mid \boldsymbol{x}, \boldsymbol{\theta})$ for a given $\boldsymbol{\theta}$ and for ease of notation $\nabla g^{(0)} = \left [ g'(\boldsymbol{x}^{(0)}) \right ]$ and $\boldsymbol{H}^{(0)} = \textrm{diag} \left( g''(\boldsymbol{x}^{(0)}) \right)$
 
 \begin{align*}
     \pi(\boldsymbol{y} \mid \boldsymbol{x}, \boldsymbol{\theta}) & \approx \exp \left\{ g(\boldsymbol{x}^{(0)}) + \left(\boldsymbol{x} - \boldsymbol{x}^{(0)}\right)^T \nabla g^{(0)} + \frac{1}{2} \left(\boldsymbol{x} - \boldsymbol{x}^{(0)}\right)^T \boldsymbol{H}^{(0)} \left(\boldsymbol{x} - \boldsymbol{x}^{(0)}\right) \right\} \\
@@ -390,7 +392,7 @@ p2 <- ggplot(precision, aes(x, y, fill = nngp_cov)) +
 cowplot::plot_grid(p1, p2, nrow = 1)
 ```
 
-## Laplace Approximation: Compute full posterior of latent field
+## Laplace approximation: Compute full posterior of latent field
 
 The function `la()` compute the Laplace Approximation of the posterior of latent field.
 
@@ -510,9 +512,9 @@ p_list[[i + 1]] <- ggplot(df, aes(x = x, y = exact)) +
 cowplot::plot_grid(plotlist = p_list, ncol = 2)
 ```
 
-## Wrapping everything in a single function
+## Wrapping everything in a function for optimisation
 
-The function `la_nngp()` compute the precision matrix of NNGP and the Laplace Approximation returning the log likelihood of the Poisson-NNGP model given a vector of parameters.
+The function `la_nngp()` compute the precision matrix of NNGP and the Laplace approximation returning the log likelihood of the Poisson-NNGP model given a vector of parameters.
 
 ```{r}
 # Estimating parameters
@@ -550,6 +552,7 @@ coords <- coords[ord,]
 
 sigma <- 2.6
 l <- .4
+beta <- .7
 
 d <- dist(coords) |>
   as.matrix()
@@ -601,194 +604,3 @@ plot y_hat
 -->
 
 # References
-
-<!-------------------------- SANITY CHECKS ------------------------------->
-```{r check_la_nngp_optim, eval = F, echo = F}
-p0 <- log(c(5, 5))
-x0 <- log(y + .5)
-
-fitted_parms <- optim(
-  p0, la_nngp, y = y, coords = coords, x0 = x0, grad = grad, hess = hess, m = m,
-  method = "Nelder-Mead", hessian = T, control = list(fnscale = -1))
-
-sigma_hat <- msm::deltamethod(
-  list(~exp(x1), ~exp(x2)), fitted_parms$par, -solve(fitted_parms$hessian), 
-  ses = F)
-
-confint2 <- function(mu, sigma, alpha = 0.05) {
-  q <- qnorm(alpha / 2) |> 
-    abs()
-  ub <- mu + q * sqrt(diag(sigma))
-  lb <- mu - q * sqrt(diag(sigma))
-  ci <- data.frame(ub, lb, mu)
-  return(ci)
-}
-
-ci_parms <- confint2(exp(fitted_parms$par), sigma_hat) |>
-  dplyr::mutate(
-    par = c("sigma", "l"),
-    true = c(sigma, l)
-  )
-
-ggplot(data = ci_parms, aes(x = "")) +
-  facet_wrap(~par, scales = "free") +
-  geom_hline(aes(yintercept = true), lty = 2) +
-  geom_linerange(aes(ymin = lb, ymax = ub)) +
-  geom_point(aes(y = mu)) +
-  labs(y = "", x = "", title = "Estimated parameter")
-# cowplot::save_plot(filename = "./images/par_poisson_nngp.png", plot = last_plot())
-```
-
-```{r check_chol, eval = F, echo = F}
-n <- 50
-m <- n - 1
-set.seed(126)
-coords <- cbind(runif(n), runif(n))
-
-ord <- order(coords[,1])
-coords <- coords[ord,]
-
-sigma <- 2
-l <- 1 / 2
-
-d <- dist(coords) |>
-  as.matrix()
-# d <- dist(coords, diag = T, upper = T)
-C <- sigma^2 * exp(-d / (2 * l^2))
-x <- rmvnorm(1, sigma = C, method = "chol", checkSymmetry = F) |>
-  c()
-eta <- exp(x)
-y <- rpois(n, eta)
-
-Cinv <- chol2inv(chol(C))
-
-L <- nngp_chol(coords, m, c(sigma, l))
-Q_nngp <- crossprod(L)
-
-lm(Q_nngp[lower.tri(Q_nngp)] ~ Cinv[lower.tri(Q_nngp)])
-```
-
-```{r check_la_marginal, eval = F, echo = F}
-n <- 100
-m <- 3
-set.seed(126)
-coords <- cbind(runif(n), runif(n))
-
-ord <- order(coords[,1])
-coords <- coords[ord,]
-
-sigma <- 2
-l <- 1 / 2
-
-d <- dist(coords) |>
-  as.matrix()
-# d <- dist(coords, diag = T, upper = T)
-C <- sigma^2 * exp(-d / (2 * l^2))
-x <- rmvnorm(1, sigma = C, method = "chol", checkSymmetry = F) |>
-  c()
-eta <- exp(x)
-y <- rpois(n, eta)
-
-x0 <- log(y + .5)
-Cinv <- chol2inv(chol(C))
-fit_proxy <- la(x0, y, Cinv, grad, hess)
-
-h <- 0.05
-n_sample <- 6
-set.seed(523)
-sampled <- sample(1:n, n_sample, replace = F)
-plots <- list()
-
-posterior_marginal <- function(y, mu, x, C) {
-  eta <- exp(mu)
-  dpois(y, eta) * dmvnorm(x, sigma = C, checkSymmetry = F) 
-}
-
-for (i in 1:n_sample) {
-  id <- sampled[i]
-  se <- fit_proxy$sigma[id, id] |>
-    sqrt()
-  x_grid <- seq(fit_proxy$mu[id] - 3 * se, fit_proxy$mu[id] + 3 * se, by = h)
-  
-  df_plot <- rep(x, each = length(x_grid)) |>
-    matrix(ncol = n) |>
-    dplyr::as_tibble(.name_repair = make.names)
-  df_plot[,id] <- x_grid
-  names(df_plot) <- paste0("x", 1:n)
-  
-  unnorm_exact <- apply(df_plot, 1, posterior_marginal, y = y[id], mu = x[id], C = C)
-  unnorm_proxy <- apply(df_plot, 1, dmvnorm, mean = fit_proxy$mu, sigma = fit_proxy$sigma, checkSymmetry = F) 
-  
-  df_plot <- df_plot |>
-    dplyr::mutate(
-      exact = unnorm_exact / sum(unnorm_exact),
-      proxy = unnorm_proxy / sum(unnorm_proxy)
-    )
-
-  p <- ggplot(df_plot, aes_string(x = paste0("x", id))) +
-    geom_line(aes(y = exact)) +
-    geom_line(aes(y = proxy), linetype = 2, col = "red") +
-    geom_point(data = data.frame(x = fit_proxy$mu[id]), aes(x = x, y = 0))
-  plots[[i]] <- p
-}
-
-cowplot::plot_grid(plotlist = plots, nrow = 2)
-```
-
-```{r check_la_bivar, eval = F, echo = F}
-n <- 50
-m <- n - 1
-set.seed(126)
-coords <- cbind(runif(n), runif(n))
-
-ord <- order(coords[,1])
-coords <- coords[ord,]
-
-sigma <- 2
-l <- 1 / 2
-
-d <- dist(coords) |>
-  as.matrix()
-# d <- dist(coords, diag = T, upper = T)
-C <- sigma^2 * exp(-d / (2 * l^2))
-x <- rmvnorm(10000, sigma = C, method = "chol", checkSymmetry = F) |>
-  c()
-x <- rmvnorm(10000, sigma = C, method = "chol", checkSymmetry = F) |>
-  colMeans()
-eta <- exp(x)
-y <- rpois(n, eta)
-
-x0 <- log(y + .5)
-Cinv <- chol2inv(chol(C))
-fit_proxy <- la(x0, y, Cinv, grad, hess)
-
-df_plot <- NULL
-w_grid <- list()
-h <- 0.05
-for (i in 1:n) {
-  se <- fit_proxy$sigma[i, i] |>
-    sqrt()
-  w_grid[[i]] <- seq(fit_proxy$mu[i] - 3 * se, fit_proxy$mu[i] + 3 * se, by = h)
-}
-
-df_plot <- expand.grid(w_grid) |>
-  as.data.frame()
-names(df_plot) <- paste0("x", 1:n)
-
-unnorm_exact <- apply(df_plot, 1, posterior, y = y, sigma_x = C, log = F)
-unnorm_proxy <- apply(df_plot, 1, dmvnorm, fit_proxy$mu, fit_proxy$sigma) 
-
-df_plot <- df_plot |>
-  dplyr::mutate(
-    exact = unnorm_exact / sum(unnorm_exact),
-    proxy = unnorm_proxy / sum(unnorm_proxy)
-  )
-
-df_longer <- df_plot |>
-  tidyr::pivot_longer(cols = c(exact, proxy), names_to = "type", values_to = "density")
-
-ggplot(df_longer, aes(x = x1, y = x2)) +
-  geom_contour(aes(z = density)) +
-  facet_wrap(vars(type)) +
-  geom_point(aes(x = x[1], y = x[2]), pch = 3)
-```
