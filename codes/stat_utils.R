@@ -1,25 +1,12 @@
 # Common utility functions for statistics
 
-library(dplyr)
+confint_par <- function(par, hess, alpha = 0.05) {
+  q <- abs(qnorm(alpha / 2))
+  se <- sqrt(diag(solve(hess)))
 
-confint_par <- function(est, heiss, alpha = 0.05) {
-  se <- solve(heiss) %>%
-    diag() %>%
-    sqrt()
-  q <- qnorm(alpha / 2) %>% 
-    abs()
-  ci <- tibble(
-    lb = est - q * se,
-    ub = est + q * se
+  ci <- data.frame(
+    lb = par - q * se,
+    ub = par + q * se
   )
-  return(ci)
-}
-
-confint2 <- function(mu, sigma, alpha = 0.05) {
-  q <- qnorm(alpha / 2) %>% 
-    abs()
-  ub <- mu + q * sqrt(diag(sigma))
-  lb <- mu - q * sqrt(diag(sigma))
-  ci <- tibble(ub, lb, mu)
   return(ci)
 }
