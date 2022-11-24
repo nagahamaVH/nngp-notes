@@ -516,50 +516,95 @@ cowplot::plot_grid(plotlist = p_list, ncol = 2)
 
 The function `la_nngp()` compute the precision matrix of NNGP and the Laplace approximation returning the log likelihood of the Poisson-NNGP model given a vector of parameters.
 
+```{r, echo = F}
+la <- function(x0, y, Z, betas, Cinv, grad, hess, control = list(it = 100, tol = 1e-4)) {
+  for (i in 1:control$it) {
+    # Rearanging means
+    H <- diag(hess(x0, Z, betas), length(x0))
+    G <- grad(x0, y, Z, betas)
+    Cx <- chol2inv(chol(Cinv - H)) # improve?
+    mu <- as.vector(Cx %*% (G - H %*% x0))
+    
+    # N-R algorithm
+    # U <- grad(x0, y)
+    # D <- diag(-1 / hess(x0), length(x0))
+    # Dinv <- diag(-hess(x0), length(x0))
+    # Winv <- chol2inv(chol(Cinv + Dinv))
+    # t <- x0 + D %*% U
+    # mu <- Winv %*% (Dinv %*% t)
+    
+    if (max(abs(x0 - mu)) < control$tol) break
+    if (i == control$it) stop("Max iteration number reached")
+    x0 <- mu
+  }
+
+  parms <- list(mu = mu, sigma = Cx)
+  return(parms)
+}
+```
+
 ```{r}
 # Estimating parameters
-la_nngp <- function(y, coords, p0, x0, grad, hess, m) {
-  print(exp(p0))
-
+la_nngp <- function(y, Z, coords, p0, x0, grad, hess, m) {
+  print(c(exp(p0[1:2]), p0[3:4]))
+  betas <- p0[3:4]
+  
   # Vecchia Approx
-  L <- nngp_chol(coords, m, exp(p0))
+  nngp_decomp <- nngp_chol(coords, m, exp(p0))
 
-  Cinv <- crossprod(L)
+  Cinv <- crossprod(nngp_decomp$L)
   C <- chol2inv(chol(Cinv))
 
   # Laplace Approximation
-  gauss <- la(x0, y, Cinv, grad, hess)
+  gauss <- la(x0, y, Z, betas, Cinv, grad, hess)
   x_hat <- gauss$mu
   Cx <- gauss$sigma
   
   # Log-likelihood
   denom <- -(length(y) / 2) * log(2 * pi) - 0.5 * determinant(Cx)$modulus[1]
-  ll <- posterior(y, x_hat, C) - denom
+  ll <- posterior(y, x_hat, Z, C, betas) - denom
   return(ll)
 }
 ```
 
 # Simulation study
 
+Consider a data
+
+\begin{align*}
+  \boldsymbol{x} & \sim \mathcal{N} \left( \boldsymbol{0}, \boldsymbol{C}(\boldsymbol{\psi}) \right) \\
+  y_i \mid \boldsymbol{x} & \overset{iid}\sim Poisson(\eta_i), \quad \eta_i = \exp \left\{ \beta_0 + \beta_1 z_i + x_i \right\} \\
+  z_i & \overset{iid}\sim \mathcal{N}(2, 1) \\
+  \boldsymbol{\theta} & = (\boldsymbol{\psi}, \boldsymbol{\beta}) = (2.6, 0.4, -0.5, 1.5),
+\end{align*}
+
+\noindent
+where the covariance matrix $C(\boldsymbol{\psi})$ is the Squared Exponential (SE) kernel in terms of signal variance and length-scale parameterization
+
+\begin{equation*}
+    \mathrm{C}(s_i, s_j) = \sigma^2 \exp \left\{ -\frac{(s_i - s_j)^2}{2 l^2} \right\}.
+\end{equation*}
+
 ```{r}
 n <- 500
 m <- 10
 set.seed(163)
-coords <- cbind(runif(n), runif(n))
+coords <- cbind(runif(n, max = 3), runif(n, max = 3))
 
 ord <- order(coords[,1])
 coords <- coords[ord,]
 
 sigma <- 2.6
 l <- .4
-beta <- .7
+betas <- c(-.5, 1.5)
 
 d <- dist(coords) |>
   as.matrix()
 C <- sigma^2 * exp(-d / (2 * l^2))
 x <- rmvnorm(1, sigma = C, method = "chol", checkSymmetry = F) |>
   c()
-eta <- exp(x)
+Z <- model.matrix(~rnorm(n, 2))
+eta <- exp(x + Z %*% betas)
 y <- rpois(n, eta)
 ```
 
@@ -567,36 +612,125 @@ We have to define the log posterior of the parameters, the gradient and hessian 
 
 ```{r}
 # pi(theta | x, y) \propto pi(y | x, theta) * pi(x | theta)
-posterior <- function(y, x, sigma_x, log = T) {
-  eta <- exp(x)
-  ll <- sum(dpois(y, eta, log = T)) + dmvnorm(x, sigma = sigma_x, log = T, checkSymmetry = F)
+posterior <- function(y, x, Z, sigma_x, betas, log = T) {
+  eta <- exp(x + Z %*% betas)
+  ll <- sum(dpois(y, eta, log = T)) + 
+    dmvnorm(x, sigma = sigma_x, log = T, checkSymmetry = F)
   if (!log) {
     ll <- exp(ll)
   }
   return(ll)
 }
 
-grad <- function(x, y) {
-  y - exp(x)
+grad <- function(x, y, Z, betas) {
+  (y - exp(x + Z %*% betas)) |>
+    as.vector()
 }
 
-hess <- function(x) {
-  -exp(x)
+hess <- function(x, Z, betas) {
+  -exp(x + Z %*% betas) |>
+    as.vector()
 }
 ```
 
 ```{r, eval = F}
-p0 <- log(c(5, 5))
+p0 <- c(log(5), log(5), 0, 1)
 x0 <- log(y + .5)
 
 fitted_parms <- optim(
-  p0, la_nngp, y = y, coords = coords, x0 = x0, grad = grad, hess = hess, m = m,
+  p0, la_nngp, y = y, Z = Z, coords = coords, x0 = x0, grad = grad, hess = hess, m = m,
   method = "Nelder-Mead", hessian = T, control = list(fnscale = -1))
 ```
 
-```{r echo=FALSE, out.width = "80%"}
+```{r, echo = F, eval = F}
+sigma_hat <- msm::deltamethod(
+  list(~exp(x1), ~exp(x2), ~x3, ~x4), fitted_parms$par, -solve(fitted_parms$hessian), 
+  ses = F)
+
+confint2 <- function(mu, sigma, alpha = 0.05) {
+  q <- qnorm(alpha / 2) |> 
+    abs()
+  ub <- mu + q * sqrt(diag(sigma))
+  lb <- mu - q * sqrt(diag(sigma))
+  ci <- data.frame(ub, lb, mu)
+  return(ci)
+}
+
+ci_parms <- confint2(c(exp(fitted_parms$par[1:2]), fitted_parms$par[3:4]), sigma_hat) |>
+  dplyr::mutate(
+    par = c("sigma", "l", "b0", "b1"),
+    true = c(sigma, l, betas)
+  )
+
+ggplot(data = ci_parms, aes(x = "")) +
+  facet_wrap(~par, scales = "free") +
+  geom_hline(aes(yintercept = true), lty = 2) +
+  geom_linerange(aes(ymin = lb, ymax = ub)) +
+  geom_point(aes(y = mu)) +
+  labs(y = "", x = "", title = "Estimated parameter") +
+  theme(plot.title = element_text(hjust = 0.5))
+# cowplot::save_plot(filename = "./images/par_poisson_nngp.png", plot = last_plot())
+```
+
+```{r echo = F, fig.height = 4}
 knitr::include_graphics("../images/par_poisson_nngp.png")
 ```
+
+```{r, echo = F, eval = F}
+nngp_decomp <- nngp_chol(coords, m, exp(fitted_parms$par))
+Cinv_hat <- crossprod(nngp_decomp$L)
+
+la_proxy <- la(x0, y, Z, fitted_parms$par[3:4], Cinv_hat, grad, hess)
+
+df <- data.frame(
+  c1 = coords[,1],
+  c2 = coords[,2],
+  y = y,
+  nngp = exp(la_proxy$mu + Z %*% fitted_parms$par[3:4])
+) |>
+  dplyr::mutate(
+    res = (y - nngp),
+    std_res = res / sd(res)
+  )
+
+p1 <- ggplot(df, aes(x = c1, y = c2, z = y)) +
+  geom_density_2d_filled() +
+  labs(title = "Observed", x = "", y = "") +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "none"
+  )
+
+p2 <- ggplot(df, aes(x = c1, y = c2, z = nngp)) +
+  geom_density_2d_filled() +
+  labs(title = "Predicted", x = "", y = "") +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "none"
+  )
+
+p3 <- ggplot(df, aes(x = 1:n, y = std_res)) +
+  geom_point() +
+  labs(title = "Standardized residuals", x = "", y = "") +
+  geom_hline(yintercept = c(-2, 2), linetype = "dashed") +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "none"
+  )
+
+p <- cowplot::plot_grid(p1, p2, nrow = 1)
+cowplot::save_plot(filename = "./images/predicted.png", plot = p)
+cowplot::save_plot(filename = "./images/residuals.png", plot = p3)
+```
+
+```{r echo = F, fig.height = 4}
+knitr::include_graphics("../images/predicted.png")
+```
+
+```{r echo = F}
+knitr::include_graphics("../images/residuals.png")
+```
+
 
 <!-- 
 plot latent field
