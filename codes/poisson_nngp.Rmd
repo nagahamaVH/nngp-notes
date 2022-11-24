@@ -1,17 +1,14 @@
 ---
 title: "Generalized Gaussian Process using NNGP"
 author: "Victor Hugo Nagahama"
-date: "2022-11-22"
+date: "`r Sys.Date()`"
 output:
-  pdf_document:
-    toc: true
-    number_sections: true
   html_document:
-    toc: true
-    number_sections: true
+    toc: yes
+    df_print: paged
 editor_options:
   chunk_output_type: console
-bibliography: references.bib
+bibliography: ../bib_files/references.bib
 ---
 
 ***
@@ -587,7 +584,6 @@ where the covariance matrix $C(\boldsymbol{\psi})$ is the Squared Exponential (S
 
 ```{r}
 n <- 500
-m <- 10
 set.seed(163)
 coords <- cbind(runif(n, max = 3), runif(n, max = 3))
 
@@ -633,21 +629,29 @@ hess <- function(x, Z, betas) {
 }
 ```
 
+The code bellow estimate the parameters maximizing the log-likelihood, considering the NNGP with neighbour size $m = 10$.
+
 ```{r, eval = F}
 p0 <- c(log(5), log(5), 0, 1)
 x0 <- log(y + .5)
+m <- 10
 
 fitted_parms <- optim(
   p0, la_nngp, y = y, Z = Z, coords = coords, x0 = x0, grad = grad, hess = hess, m = m,
   method = "Nelder-Mead", hessian = T, control = list(fnscale = -1))
 ```
 
+![](../images/poi_nngp_pars.png){width=60%}
+![](../images/poi_nngp_pred.png){width=70%}
+![](../images/poi_nngp_resid.png){width=60%}
+
+<!---------------- RUN THE CHUNKS BELLOW BEFORE COMPILING THE REPORT --------->
 ```{r, echo = F, eval = F}
 sigma_hat <- msm::deltamethod(
   list(~exp(x1), ~exp(x2), ~x3, ~x4), fitted_parms$par, -solve(fitted_parms$hessian), 
   ses = F)
 
-confint2 <- function(mu, sigma, alpha = 0.05) {
+conf_int <- function(mu, sigma, alpha = 0.05) {
   q <- qnorm(alpha / 2) |> 
     abs()
   ub <- mu + q * sqrt(diag(sigma))
@@ -656,7 +660,7 @@ confint2 <- function(mu, sigma, alpha = 0.05) {
   return(ci)
 }
 
-ci_parms <- confint2(c(exp(fitted_parms$par[1:2]), fitted_parms$par[3:4]), sigma_hat) |>
+ci_parms <- conf_int(c(exp(fitted_parms$par[1:2]), fitted_parms$par[3:4]), sigma_hat) |>
   dplyr::mutate(
     par = c("sigma", "l", "b0", "b1"),
     true = c(sigma, l, betas)
@@ -669,11 +673,7 @@ ggplot(data = ci_parms, aes(x = "")) +
   geom_point(aes(y = mu)) +
   labs(y = "", x = "", title = "Estimated parameter") +
   theme(plot.title = element_text(hjust = 0.5))
-# cowplot::save_plot(filename = "./images/par_poisson_nngp.png", plot = last_plot())
-```
-
-```{r echo = F, fig.height = 4}
-knitr::include_graphics("../images/par_poisson_nngp.png")
+# cowplot::save_plot(filename = "./images/poi_nngp_pars.png", plot = last_plot())
 ```
 
 ```{r, echo = F, eval = F}
@@ -719,22 +719,8 @@ p3 <- ggplot(df, aes(x = 1:n, y = std_res)) +
   )
 
 p <- cowplot::plot_grid(p1, p2, nrow = 1)
-cowplot::save_plot(filename = "./images/predicted.png", plot = p)
-cowplot::save_plot(filename = "./images/residuals.png", plot = p3)
+# cowplot::save_plot(filename = "./images/poi_nngp_pred.png", plot = p)
+# cowplot::save_plot(filename = "./images/poi_nngp_resid.png", plot = p3)
 ```
-
-```{r echo = F, fig.height = 4}
-knitr::include_graphics("../images/predicted.png")
-```
-
-```{r echo = F}
-knitr::include_graphics("../images/residuals.png")
-```
-
-
-<!-- 
-plot latent field
-plot y_hat
--->
 
 # References
