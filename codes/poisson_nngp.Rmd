@@ -40,7 +40,7 @@ The full conditional density in the denominator has no analytical form. A conven
 
 \begin{align}
     \pi(\boldsymbol{x} \mid \boldsymbol{y}) & = \frac{\pi(\boldsymbol{y} \mid \boldsymbol{x}) \pi(\boldsymbol{x})}{\pi(\boldsymbol{y})} \nonumber \\
-    & \propto \pi(\boldsymbol{x}) \pi(\boldsymbol{y} \mid \boldsymbol{x}) \label{posterior of latent field}.
+    & \propto \pi(\boldsymbol{x}) \pi(\boldsymbol{y} \mid \boldsymbol{x}) \tag{posterior of latent field}.
 \end{align}
 
 Iterative applications of the Taylor expansion under regular conditions converges a good approximation of the desired conditional density $\tilde{\pi}(\boldsymbol{x} | \boldsymbol{y})$ which in fact it is a multivariate normal distribution will be demonstrated in the section bellow. After obtaining the approximation, the posterior of parameters resumes to
@@ -100,7 +100,7 @@ where $\boldsymbol{A} = (a_{ij})$ is a lower triangular matrix and $\boldsymbol{
 \end{align*}
 
 \begin{align}
-  \tilde{\boldsymbol{C}}^{-1} & = (\boldsymbol{I} - \boldsymbol{A})^T \boldsymbol{D} (\boldsymbol{I} - \boldsymbol{A}) \nonumber \\
+  \tilde{\boldsymbol{C}}^{-1} & = (\boldsymbol{I} - \boldsymbol{A})^T \boldsymbol{D}^{-1} (\boldsymbol{I} - \boldsymbol{A}) \nonumber \\
   \boldsymbol{L} & = \boldsymbol{D}^{-1/2} (\boldsymbol{I} - \boldsymbol{A}). \label{cholesky}
 \end{align}
 

@@ -11,7 +11,7 @@
 
 <meta name="author" content="Victor Hugo Nagahama" />
 
-<meta name="date" content="2022-11-24" />
+<meta name="date" content="2022-12-01" />
 
 <title>Generalized Gaussian Process using NNGP</title>
 
@@ -1659,7 +1659,7 @@ pre code {
 <h1 class="title toc-ignore">Generalized Gaussian Process using
 NNGP</h1>
 <h4 class="author">Victor Hugo Nagahama</h4>
-<h4 class="date">2022-11-24</h4>
+<h4 class="date">2022-12-01</h4>
 
 </div>
 
@@ -1723,7 +1723,7 @@ density at the mode of posterior <span class="math inline">\(\pi(\boldsymbol{x} 
 \frac{\pi(\boldsymbol{y} \mid \boldsymbol{x})
 \pi(\boldsymbol{x})}{\pi(\boldsymbol{y})} \nonumber \\
     &amp; \propto \pi(\boldsymbol{x}) \pi(\boldsymbol{y} \mid
-\boldsymbol{x}) \label{posterior of latent field}.
+\boldsymbol{x}) \tag{posterior of latent field}.
 \end{align}\]</span></p>
 <p>Iterative applications of the Taylor expansion under regular
 conditions converges a good approximation of the desired conditional
@@ -1810,7 +1810,7 @@ sparse precision matrix and Cholesky decomposition <span class="math inline">\(\
 \end{align*}\]</span></p>
 <p><span class="math display">\[\begin{align}
   \tilde{\boldsymbol{C}}^{-1} &amp; = (\boldsymbol{I} -
-\boldsymbol{A})^T \boldsymbol{D} (\boldsymbol{I} - \boldsymbol{A})
+\boldsymbol{A})^T \boldsymbol{D}^{-1} (\boldsymbol{I} - \boldsymbol{A})
 \nonumber \\
   \boldsymbol{L} &amp; = \boldsymbol{D}^{-1/2} (\boldsymbol{I} -
 \boldsymbol{A}). \label{cholesky}

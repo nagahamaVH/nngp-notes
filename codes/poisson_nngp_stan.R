@@ -4,10 +4,11 @@
 
 library(rstan)
 library(bayesplot)
+source("./codes/NNMatrix.R")
 
 options(mc.cores = parallel::detectCores())
 
-n <- 500
+n <- 80
 max_s <- 3
 
 set.seed(163)
@@ -29,41 +30,18 @@ Z <- cbind(1, rnorm(n, 2))
 eta <- exp(tcrossprod(Z, t(beta)) + x)
 y <- rpois(n, eta)
 
-m <- 10
+m <- 3
 
-get_NN_ind <- function(ind, ind_distM_i, M){
-  l <- ifelse(ind < M, ind, M)
-  D_i <- rep(0, M);
-  D_i[1:l] <- c(ind_distM_i[[ind]])[1:l]
-  return(D_i)
-}
-
-get_nn <- function(coords, m){
-  n <- dim(coords)[1]
-  nn_data <- spNNGP::spConjNNGP(
-    rep(0, n) ~ 1, coords = coords,
-    n.neighbors = m,
-    theta.alpha = c("phi" = 5, "alpha" = 0.5),
-    sigma.sq.IG = c(2, 1),
-    cov.model = "exponential",
-    return.neighbor.info = T, fit.rep = F, 
-    verbose = F)
-  ord <- nn_data$neighbor.info$ord
-  nn_idx <- sapply(1:(n - 1), get_NN_ind, nn_data$neighbor.info$n.indx[-1], m) |>
-    t()
-  
-  return(list(ord = ord, nn_idx = nn_idx))
-}
-
-nn <- get_nn(coords, m)
+nn <- NNMatrix(coords, m)
 
 stan_data <- list(
   n = n,
   y = y,
   Z = Z,
   p = dim(Z)[2],
-  D = D,
-  nn = nn$nn_idx,
+  nn = nn$NN_ind,
+  D = nn$NN_dist,
+  D_m = nn$NN_distM,
   m = m)
 
 hist(y)
@@ -75,7 +53,7 @@ stan_fit <- stan(
   file = model,
   data = stan_data,
   chains = 3,
-  iter = 800,
+  iter = 300,
   seed = 171)
 
 stan_fit |>
