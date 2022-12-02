@@ -16,37 +16,45 @@ functions{
   //   return D;
   // }
   
-  matrix nngp_chol(matrix D, matrix D_m, matrix nn, int m, real sigma, real l) {
-    int n = dims(nn)[1] + 1;
-    matrix[m + 1, m + 1] D_i;
-    matrix[m + 1, m + 1] C_i;
+  matrix nngp_chol(
+    matrix d_pairs, matrix d_nn_pairs, int[,] nn, int m, real sigma, real l) {
+    int n = dims(d_pairs)[1] + 1;
+    int m_i;
+    int d_size = m + 1;
     matrix[n, n] C;
-    matrix[n, n] I;
-
+    matrix[n, n] I = diag_matrix(rep_vector(1, n));
+    matrix[d_size, d_size] d = rep_matrix(0, d_size, d_size);
+    matrix[d_size, d_size] C_i;
     // Initialize A = [0] and dd = diag(D)
     matrix[n, n] A = rep_matrix(0, n, n);
     vector[n] dd;
     dd[1] = sigma^2;
 
-    // Update A and dd
+    // Update A and d
     for (i in 1:(n - 1)) {
-      // Reconstruct  distance matrix for point i and its neighbours
-      matrix[n, n] DD = rep_matrix(0, n, n);
-
-      DD[2:n, 1] = to_vector(D[i,]);
-      DD[1, 2:n] = DD[1, 2:n];
+      // Reconstruct distance matrix (d) for point i and its neighbours
+      d[2:d_size, 1] = to_vector(d_pairs[i,]);
+      d[1, 2:d_size] = d_pairs[i,];
       for (j in 2:m) {
-        for (k in (j + 1):n) {
-          DD[j, k] = D_m[i, k - j];
-          DD[k, j] = DD[j, k];
+        for (k in (j + 1):d_size) {
+          d[k, j] = d_nn_pairs[i, k - j];
+          d[j, k] = d[k, j];
         }
       }
-      C_i = sigma^2 * exp(-DD / (2 * l^2));
-      A[i + 1, 1:m] = to_row_vector(C_i[1, -1] * inverse(C_i[2:m, 2:m]));
-      dd[i + 1] = C_i[1, 1] - A[i + 1, nn[i,]] * C_i[1, -1];
+
+      // Avoid selecting 0s in nn array
+      if (i < m) {
+        m_i = i;
+      } else {
+        m_i = m;
+      }
+      
+      C_i = sigma^2 * exp(-d / (2 * l^2));
+      A[i + 1, nn[i, 1:m_i]] = to_row_vector(
+        C_i[1, 2:(m_i + 1)] * inverse(C_i[2:(m_i + 1), 2:(m_i + 1)]));
+      dd[i + 1] = C_i[1, 1] - A[i + 1, nn[i, 1:m_i]] * C_i[1, 2:(m_i + 1)];
     }
 
-    I = diag_matrix(rep_vector(1, n));
     A = inverse(I - A);
     C = A * diag_matrix(dd) * A';
     return C;
@@ -59,9 +67,9 @@ data{
   int<lower = 1> p;
   int<lower = 0> y[n];
   matrix[n, p] Z;
-  matrix[n - 1, m] nn;
-  matrix[n - 1, m] D;
-  matrix[n - 1, m] D_m;
+  int nn[n - 1, m];
+  matrix[n - 1, m] d_pairs;
+  matrix[n - 1, m] d_nn_pairs;
 }
 
 parameters{
@@ -79,7 +87,7 @@ model{
   matrix[n, n] C;
   vector[n] mu;
   
-  C = nngp_chol(D, D_m, nn, m, sigma, l);
+  C = nngp_chol(d_pairs, d_nn_pairs, nn, m, sigma, l);
   x ~ multi_normal(rep_vector(0, n), C);
   
   // Priors
