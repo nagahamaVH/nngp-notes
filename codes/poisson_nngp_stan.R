@@ -15,7 +15,7 @@ data_board <- pins::board_folder("./data", versioned = T)
 model_board <- pins::board_folder("models", versioned = T)
 # -----------------------------------------------------------------------------
 
-n <- 100
+n <- 200
 max_s <- 3
 
 set.seed(163)
@@ -41,24 +41,35 @@ m <- 3
 
 nn <- NNMatrix(coords, m)
 
+# stan_data <- list(
+#   N = n,
+#   Y = y,
+#   X = Z,
+#   P = dim(Z)[2],
+#   NN_ind = nn$NN_ind,
+#   NN_dist = nn$NN_dist,
+#   NN_distM = nn$NN_distM,
+#   M = m)
+
 stan_data <- list(
-  N = n,
-  Y = y,
-  X = Z,
-  P = dim(Z)[2],
-  NN_ind = nn$NN_ind,
-  NN_dist = nn$NN_dist,
-  NN_distM = nn$NN_distM,
-  M = m)
+  n = n,
+  m = m,
+  p = dim(Z)[2],
+  y = y,
+  Z = Z,
+  nn = nn$NN_ind,
+  d_pairs = nn$NN_dist,
+  d_nn_pairs = nn$NN_distM)
 
 hist(y)
 
 # ------------------------ Stan parameters ------------------------------------
 m <- 3
-n_chain <- 6
-n_it <- 5000
-model_file <- "./codes/poisson_nngp_zhang.stan"
+n_chain <- 1
+n_it <- 200
+model_file <- "./codes/poisson_nngp.stan"
 # -----------------------------------------------------------------------------
+
 stan_fit <- stan(
   file = model_file,
   data = stan_data,
