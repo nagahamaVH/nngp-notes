@@ -15,7 +15,7 @@ data_board <- pins::board_folder("./data", versioned = T)
 model_board <- pins::board_folder("models", versioned = T)
 # -----------------------------------------------------------------------------
 
-n <- 200
+n <- 500
 max_s <- 3
 
 set.seed(163)
@@ -37,45 +37,47 @@ Z <- cbind(1, rnorm(n, 2))
 eta <- exp(tcrossprod(Z, t(beta)) + x)
 y <- rpois(n, eta)
 
-m <- 3
+m <- 5
 
 nn <- NNMatrix(coords, m)
 
-# stan_data <- list(
-#   N = n,
-#   Y = y,
-#   X = Z,
-#   P = dim(Z)[2],
-#   NN_ind = nn$NN_ind,
-#   NN_dist = nn$NN_dist,
-#   NN_distM = nn$NN_distM,
-#   M = m)
-
 stan_data <- list(
-  n = n,
-  m = m,
-  p = dim(Z)[2],
-  y = y,
-  Z = Z,
-  nn = nn$NN_ind,
-  d_pairs = nn$NN_dist,
-  d_nn_pairs = nn$NN_distM)
+  N = n,
+  Y = y,
+  X = Z,
+  P = dim(Z)[2],
+  NN_ind = nn$NN_ind,
+  NN_dist = nn$NN_dist,
+  NN_distM = nn$NN_distM,
+  M = m)
+
+# stan_data <- list(
+#   n = n,
+#   y = y,
+#   Z = Z,
+#   p = dim(Z)[2],
+#   nn = nn$NN_ind,
+#   d_pairs = nn$NN_dist,
+#   d_nn_pairs = nn$NN_distM,
+#   m = m)
 
 hist(y)
 
 # ------------------------ Stan parameters ------------------------------------
-m <- 3
-n_chain <- 1
-n_it <- 200
-model_file <- "./codes/poisson_nngp.stan"
+n_chain <- 3
+n_it <- 2000
+model_file <- "./codes/poisson_nngp_zhang.stan"
+# model_file <- "./codes/poisson_nngp_matrix.stan"
 # -----------------------------------------------------------------------------
 
+t_init <- proc.time()
 stan_fit <- stan(
   file = model_file,
   data = stan_data,
   chains = n_chain,
   iter = n_it,
   seed = 171)
+t_total <- proc.time() - t_init
 
 stan_fit |>
   mcmc_trace(pars = c("sigma", "l"), regex_pars = "beta")
@@ -117,9 +119,11 @@ model_meta <- list(
   model = model_name,
   file = model_file,
   data = data_version,
-  n_chain = m,
   n_it = n_it,
-  n_chain = n_chain
+  n_chain = n_chain,
+  time = t_total,
+  model_code = readLines(model_file) |>
+    paste(collapse = "\n")
 )
 
 pins::pin_write(
