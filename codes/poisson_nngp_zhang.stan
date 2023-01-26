@@ -6,7 +6,7 @@ functions{
   where U = (I - A) * X and A is a lower triangular matrix and has at max M 
   non-zero entries. Moreover, U can be vectorised and A can be a matrix
   storing non-zero elements. */
-  real nngp_w_lpdf(vector w, real sigmasq, real l, matrix NN_dist, 
+  real nngp_w_lpdf(vector w, real sigmasq, real lsq, matrix NN_dist, 
       matrix NN_distM, int[,] NN_ind, int N, int M){
     vector[N] V;
     vector[N] I_Aw = w;
@@ -15,7 +15,7 @@ functions{
     
     V[1] = 1;
     
-    // For i-th location compute the non-zero entries of A_i. 
+    // For each location i compute the u_i = (I - A) * W
     for (i in 2:N) {
       matrix[i < (M + 1) ? (i - 1) : M, i < (M + 1) ? (i - 1) : M] iNNdistM;
       matrix[i < (M + 1) ? (i - 1) : M, i < (M + 1) ? (i - 1) : M] iNNCholL;
@@ -33,7 +33,7 @@ functions{
         for (j in 1:(dim - 1)){
           for (k in (j + 1):dim){
             h = h + 1;
-            iNNdistM[j, k] = exp(-NN_distM[(i - 1), h] / (2 * l^2));
+            iNNdistM[j, k] = exp(-NN_distM[(i - 1), h] / (2 * lsq));
             iNNdistM[k, j] = iNNdistM[j, k];
           }
         }
@@ -46,23 +46,22 @@ functions{
       iNNCholL = cholesky_decompose(iNNdistM);
       
       // Scaled covariance vector between i-th location and its neighbors - C(s_i, c_i)
-      iNNcorr = to_vector(exp(-NN_dist[(i - 1), 1:dim] / (2 * l^2)));
+      iNNcorr = to_vector(exp(-NN_dist[(i - 1), 1:dim] / (2 * lsq)));
       
-      // Equivalent to inverse(tri(A)) * b
+      // Stan: inverse(tri(A)) * b
       v = mdivide_left_tri_low(iNNCholL, iNNcorr);
       
-      // Diagonal elements of D^{-1} in Sigma^{-1} = (I - A)^T * D^{-1} (I - A)
+      // Diagonal elements of D, i.e, d_i
       V[i] = 1 - dot_self(v);
       
-      // Equivalent to b * inverse(tri(A)).
-      // v2 is the non-zero entries of the i-th row of A 
+      // Compute a_i. Stan: b * inverse(tri(A))
       v2 = mdivide_right_tri_low(v', iNNCholL);
 
-      // U = (I - A) * X = I * X - A * X
-      // where, the term after the subtraction is the vector product of non-zero entries
+      // u_i = w_i - a_i * w_{c_i}
       I_Aw[i] = I_Aw[i] - v2 * w[NN_ind[(i - 1), 1:dim]];
     }
-
+    
+    // I_Aw ./ V is the element-wise division, i.e, u_i / d_i
     return -0.5 * (1 / sigmasq * dot_product(I_Aw, (I_Aw ./ V)) + sum(log(V)) + 
       N * log(sigmasq));
   }
@@ -88,16 +87,14 @@ parameters{
 
 transformed parameters {
     real sigmasq = square(sigma);
+    real lsq = square(l);
 }
 
 model{
-  vector[N] mu;
-
-  l ~ inv_gamma(3, 0.5);
-  sigma ~ normal(0, 3);
-  beta ~ normal(0, 1);
-  w ~ nngp_w(sigmasq, l, NN_dist, NN_distM, NN_ind, N, M);
-  mu = X * beta + w;
-  Y ~ poisson_log(mu);
+  l ~ inv_gamma(3, 1);
+  sigma ~ inv_gamma(3, 1);
+  beta ~ normal(0, 100);
+  w ~ nngp_w(sigmasq, lsq, NN_dist, NN_distM, NN_ind, N, M);
+  Y ~ poisson_log(X * beta + w);
 }
 
