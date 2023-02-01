@@ -15,8 +15,8 @@ data_board <- pins::board_folder("./data", versioned = T)
 model_board <- pins::board_folder("models", versioned = T)
 # -----------------------------------------------------------------------------
 
-n <- 500
-max_s <- 3
+n <- 1000
+max_s <- 1.5
 
 set.seed(163)
 coords <- cbind(runif(n, max = max_s), runif(n, max = max_s))
@@ -24,16 +24,16 @@ coords <- cbind(runif(n, max = max_s), runif(n, max = max_s))
 ord <- order(coords[,1])
 coords <- coords[ord,]
 
-sigma <- 2.6
+sigma <- .9
 l <- .4
-beta <- c(-.5, 1.8)
+beta <- c(3, .5)
 
 D <- dist(coords) |>
   as.matrix()
 C <- sigma^2 * exp(-D / (2 * l^2))
 x <- mvtnorm::rmvnorm(1, sigma = C, method = "chol", checkSymmetry = F) |>
   c()
-Z <- cbind(1, rnorm(n, 2))
+Z <- cbind(1, rnorm(n))
 eta <- exp(tcrossprod(Z, t(beta)) + x)
 y <- rpois(n, eta)
 
@@ -64,10 +64,9 @@ stan_data <- list(
 hist(y)
 
 # ------------------------ Stan parameters ------------------------------------
-n_chain <- 3
-n_it <- 2000
+n_chain <- 4
+n_it <- 1500
 model_file <- "./codes/poisson_nngp_zhang.stan"
-# model_file <- "./codes/poisson_nngp_matrix.stan"
 # -----------------------------------------------------------------------------
 
 t_init <- proc.time()
@@ -76,23 +75,9 @@ stan_fit <- stan(
   data = stan_data,
   chains = n_chain,
   iter = n_it,
-  seed = 171)
+  seed = 171
+)
 t_total <- proc.time() - t_init
-
-stan_fit |>
-  mcmc_trace(pars = c("sigma", "l"), regex_pars = "beta")
-
-stan_fit |>
-  mcmc_dens_overlay(pars = c("sigma", "l"), regex_pars = "beta")
-
-stan_fit |>
-  mcmc_dens(pars = c("sigma", "l"), regex_pars = "beta")
-
-stan_fit |>
-  rhat() |>
-  mcmc_rhat()
-
-summary(stan_fit, pars = c("beta", "sigma", "l"))$summary
 
 # Save data
 data_meta <- list(

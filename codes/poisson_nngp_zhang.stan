@@ -22,10 +22,10 @@ on C(c_i, c_i) = L * L^T and defining b_i = L^{-1} * C(s_i, c_i), then
 */
 
 functions{
-  real nngp_w_lpdf(vector w, real sigmasq, real lsq, matrix NN_dist, 
+  real nngp_w_lpdf(vector w, real mu, real sigmasq, real lsq, matrix NN_dist, 
       matrix NN_distM, int[,] NN_ind, int N, int M){
     vector[N] d;
-    vector[N] u = w;
+    vector[N] u = w - mu;
     int dim;
     int h;
     
@@ -111,10 +111,14 @@ transformed parameters {
 }
 
 model{
-  l ~ inv_gamma(3, 1);
-  sigma ~ inv_gamma(3, 1);
-  beta ~ normal(0, 100);
-  w ~ nngp_w(sigmasq, lsq, NN_dist, NN_distM, NN_ind, N, M);
-  Y ~ poisson_log(X * beta + w);
+  l ~ inv_gamma(2, 1);
+  // l ~ normal(0, 1);
+  sigma ~ inv_gamma(2, 1);
+  // sigma ~ normal(0, 5);
+  beta ~ normal(0, 1);
+  w ~ nngp_w(beta[1], sigmasq, lsq, NN_dist, NN_distM, NN_ind, N, M);
+  Y ~ poisson_log(block(X, 1, 2, N, P - 1) * tail(beta, P - 1) + w);
 }
 
+// generated quantities {
+// }
