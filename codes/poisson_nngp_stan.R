@@ -3,7 +3,6 @@
 # https://mc-stan.org/docs/2_23/stan-users-guide/posterior-predictive-simulation-in-stan.html
 
 library(rstan)
-library(bayesplot)
 source("./codes/NNMatrix.R")
 
 # ------------------- Setup ---------------------------------------------------
@@ -15,7 +14,7 @@ data_board <- pins::board_folder("./data", versioned = T)
 model_board <- pins::board_folder("models", versioned = T)
 # -----------------------------------------------------------------------------
 
-n <- 1000
+n <- 100
 max_s <- 1.5
 
 set.seed(163)
@@ -51,21 +50,11 @@ stan_data <- list(
   NN_distM = nn$NN_distM,
   M = m)
 
-# stan_data <- list(
-#   n = n,
-#   y = y,
-#   Z = Z,
-#   p = dim(Z)[2],
-#   nn = nn$NN_ind,
-#   d_pairs = nn$NN_dist,
-#   d_nn_pairs = nn$NN_distM,
-#   m = m)
-
 hist(y)
 
 # ------------------------ Stan parameters ------------------------------------
 n_chain <- 4
-n_it <- 1500
+n_it <- 1000
 model_file <- "./codes/poisson_nngp_zhang.stan"
 # -----------------------------------------------------------------------------
 
@@ -103,10 +92,11 @@ data_version <- data_board |>
 model_meta <- list(
   model = model_name,
   file = model_file,
+  n_neighbors = m,
   data = data_version,
   n_it = n_it,
   n_chain = n_chain,
-  time = t_total,
+  time = t_total[3],
   model_code = readLines(model_file) |>
     paste(collapse = "\n")
 )
