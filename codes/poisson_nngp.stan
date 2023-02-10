@@ -21,7 +21,6 @@ on C(c_i, c_i) = L * L^T and defining b_i = L^{-1} * C(s_i, c_i), then
           d_i = C(s_i, s_i) - b_i^T * b_i.
 */
 
-// sum zero constraint
 functions{
   real nngp_w_lpdf(vector w, real sigmasq, real lsq, matrix NN_dist,
       matrix NN_distM, int[,] NN_ind, int N, int M){

@@ -1,6 +1,5 @@
-# https://mbjoseph.github.io/posts/2018-12-27-gaussian-predictive-process-models-in-stan/
+# https://mbjoseph.github.io/posts/2018-12-27-gaussian-predictive-process-models-in-stan
 # https://mc-stan.org/users/documentation/case-studies/nngp.html
-# https://mc-stan.org/docs/2_23/stan-users-guide/posterior-predictive-simulation-in-stan.html
 
 library(rstan)
 source("./codes/NNMatrix.R")
@@ -14,7 +13,7 @@ data_board <- pins::board_folder("./data", versioned = T)
 model_board <- pins::board_folder("models", versioned = T)
 # -----------------------------------------------------------------------------
 
-n <- 100
+n <- 50
 max_s <- 1.5
 
 set.seed(163)
@@ -55,16 +54,18 @@ hist(y)
 # ------------------------ Stan parameters ------------------------------------
 n_chain <- 4
 n_it <- 1000
-model_file <- "./codes/poisson_nngp_zhang.stan"
+model_file <- "./codes/poisson_nngp.stan"
+pars_to_watch <- c("sigma", "l", "beta", "w")
 # -----------------------------------------------------------------------------
 
 t_init <- proc.time()
 stan_fit <- stan(
   file = model_file,
   data = stan_data,
+  pars = pars_to_watch,
   chains = n_chain,
   iter = n_it,
-  seed = 171
+  seed = 171,
 )
 t_total <- proc.time() - t_init
 

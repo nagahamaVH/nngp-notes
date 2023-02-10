@@ -1,14 +1,8 @@
-# https://mbjoseph.github.io/posts/2018-12-27-gaussian-predictive-process-models-in-stan/
-# https://mc-stan.org/users/documentation/case-studies/nngp.html
-# https://mc-stan.org/docs/2_23/stan-users-guide/posterior-predictive-simulation-in-stan.html
-
-library(ggplot2)
+# library(ggplot2)
 library(posterior)
 library(bayesplot)
 
 # ------------------- Setup ---------------------------------------------------
-options(mc.cores = parallel::detectCores())
-
 model_name <- "poisson_nngp_zhang"
 
 data_board <- pins::board_folder("./data", versioned = T)
