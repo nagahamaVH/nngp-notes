@@ -1,4 +1,7 @@
-/* Latent GP model */
+/* Latent GP model
+https://mc-stan.org/users/documentation/case-studies/nngp.html
+*/
+
 data {
     int<lower = 1> N;
     int<lower = 1> P;
@@ -16,13 +19,13 @@ parameters{
 
 transformed parameters {
   // Hard sum-to-zero constrain
-  vector[N] w = append_row(-sum(w_raw), w_raw);
+  vector[N] w = append_row(w_raw, -sum(w_raw));
 }
 
 model{
-  matrix[N - 1, N - 1] K = cov_exp_quad(coords[1:(N - 1)], sigma, l);
+  matrix[N, N] K = cov_exp_quad(coords[1:N], sigma, l);
 
-  w_raw ~ multi_normal(rep_vector(0, N - 1), K);
+  w ~ multi_normal(rep_vector(0, N), K);
   l ~ inv_gamma(2, 1);
   sigma ~ inv_gamma(2, 1);
   beta ~ normal(0, 1);

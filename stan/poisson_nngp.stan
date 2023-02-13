@@ -1,4 +1,6 @@
-/* Latent NNGP model 
+/* Latent NNGP model
+https://github.com/mbjoseph/gpp-speed-test
+https://mc-stan.org/users/documentation/case-studies/nngp.html
 
 The hardest part in the model is to implement the NNGP.
 
@@ -110,13 +112,13 @@ transformed parameters {
     real lsq = square(l);
     
     // Hard sum-to-zero constrain
-    vector[N] w = append_row(-sum(w_raw), w_raw);
+    vector[N] w = append_row(w_raw, -sum(w_raw));
 }
 
 model{
   l ~ inv_gamma(2, 1);
   sigma ~ inv_gamma(2, 1);
   beta ~ normal(0, 1);
-  w_raw ~ nngp_w(sigmasq, lsq, NN_dist, NN_distM, NN_ind, N - 1, M);
+  w ~ nngp_w(sigmasq, lsq, NN_dist, NN_distM, NN_ind, N, M);
   Y ~ poisson_log(X * beta + w);
 }

@@ -1,5 +1,4 @@
-# https://mbjoseph.github.io/posts/2018-12-27-gaussian-predictive-process-models-in-stan
-# https://mc-stan.org/users/documentation/case-studies/nngp.html
+# https://github.com/mbjoseph/gpp-speed-test
 
 library(rstan)
 

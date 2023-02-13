@@ -3,7 +3,7 @@ library(posterior)
 library(bayesplot)
 
 # ------------------- Setup ---------------------------------------------------
-model_name <- "poisson_nngp_zhang"
+model_name <- "poisson_nngp"
 
 data_board <- pins::board_folder("./data", versioned = T)
 model_board <- pins::board_folder("models", versioned = T)
