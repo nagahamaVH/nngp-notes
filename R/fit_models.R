@@ -4,6 +4,7 @@ source("R/NNMatrix.R")
 
 # ------------------- Setup ---------------------------------------------------
 options(mc.cores = parallel::detectCores())
+rstan_options("auto_write" = T)
 
 data_board <- pins::board_folder("./data", versioned = T)
 model_board <- pins::board_folder("models", versioned = T)
@@ -20,7 +21,9 @@ n_iter <- 1000
 datasets <- pins::pin_list(data_board)
 
 pb <- progress::progress_bar$new(
-  total = length(datasets) * (1 + length(neighbor_size))
+  total = length(datasets) * (1 + length(neighbor_size)),
+  format = ":what [:bar] :percent\n",
+  width = getOption("width") - 30
 )
 
 pb$tick(0)
@@ -41,8 +44,9 @@ for (j in 1:length(datasets)) {
     # Adding extra data for stan data block
     if (models[i] == "poisson_nngp.stan") {
       for (k in 1:length(neighbor_size)) {
-        pb$tick()
         m <- neighbor_size[k]
+        pb$tick(tokens = list(
+          what = paste0("N:", data$N, " ", models[i], " M:", m)))
         nn <- NNMatrix(data$coords, m)
         
         data$NN_ind <- nn$NN_ind
@@ -90,9 +94,9 @@ for (j in 1:length(datasets)) {
         })
       }
     } else{
-      pb$tick()
-      
       m <- 0
+      pb$tick(tokens = list(
+        what = paste0("N:", data$N, " ", models[i], " M:", m)))
 
       t_init <- proc.time()
       # fit_cl <- mod_cl$sample(
@@ -107,8 +111,7 @@ for (j in 1:length(datasets)) {
         data = data,
         chains = n_chain,
         iter = n_iter,
-        seed = seed,
-        refresh = 0)
+        seed = seed)
       t_total <- proc.time() - t_init
       
       model_meta <- list(

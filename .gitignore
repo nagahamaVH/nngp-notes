@@ -1,5 +1,7 @@
-data
-models
 .Rproj.user
 *.Rproj
 .Rhistory
+
+data
+models
+stan/*.rds
