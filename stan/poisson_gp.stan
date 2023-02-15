@@ -1,5 +1,6 @@
 /* Latent GP model
 https://mc-stan.org/users/documentation/case-studies/nngp.html
+https://github.com/mbjoseph/gpp-speed-test/blob/master/stan/full_pois.stan
 */
 
 data {
@@ -14,18 +15,21 @@ parameters{
     vector[P] beta;
     real<lower = 0> sigma;
     real<lower = 0> l;
-    vector[N - 1] w_raw;
+    vector[N] z;
 }
 
 transformed parameters {
-  // Hard sum-to-zero constrain
-  vector[N] w = append_row(w_raw, -sum(w_raw));
+  matrix[N, N] K;
+  vector[N] w;
+  K = cov_exp_quad(coords, sigma, l);
+  for (i in 1:N) {
+    K[i, i] += 1e-12;
+  }
+  w = cholesky_decompose(K) * z;
 }
 
 model{
-  matrix[N, N] K = cov_exp_quad(coords[1:N], sigma, l);
-
-  w ~ multi_normal(rep_vector(0, N), K);
+  z ~ normal(0, 1);
   l ~ inv_gamma(2, 1);
   sigma ~ inv_gamma(2, 1);
   beta ~ normal(0, 1);
